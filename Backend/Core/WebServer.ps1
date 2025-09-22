@@ -1,17 +1,17 @@
 <# 
-PowerShellÇáÁ¿¼¶Web·şÎñÆ÷ºËĞÄ£¨¼æÈİPS 5.1£¬³¹µ×½â¾öº¯ÊıÎ´Ê¶±ğÎÊÌâ£©
-»ùÓÚHttpListenerÊµÏÖ£¬·ÅÆúÄäÃû½Å±¾¿é£¬Ö±½ÓÏÔÊ½Â·ÓÉ
+PowerShellè½»é‡çº§WebæœåŠ¡å™¨æ ¸å¿ƒï¼ˆå…¼å®¹PS 5.1ï¼Œå½»åº•è§£å†³å‡½æ•°æœªè¯†åˆ«é—®é¢˜ï¼‰
+åŸºäºHttpListenerå®ç°ï¼Œæ”¾å¼ƒåŒ¿åè„šæœ¬å—ï¼Œç›´æ¥æ˜¾å¼è·¯ç”±
 #>
 
 Add-Type -AssemblyName System.Web
 
-# È«¾Ö±äÁ¿
+# å…¨å±€å˜é‡
 $script:httpListener = New-Object System.Net.HttpListener
 $script:frontendPath = $null
 
 # ==============================================
-# ¡¾¹Ø¼üĞŞ¸Ä1£ºÌáÇ°µ¼ÈëËùÓĞÒµÎñÄ£¿é£¨¶¥²ãscript×÷ÓÃÓò£©¡¿
-# Ö±½ÓÔÚWebServer¶¥²ãµ¼Èë£¬È·±£ËùÓĞº¯ÊıÔÚscript×÷ÓÃÓò¿ÉÓÃ
+# ã€å…³é”®ä¿®æ”¹1ï¼šæå‰å¯¼å…¥æ‰€æœ‰ä¸šåŠ¡æ¨¡å—ï¼ˆé¡¶å±‚scriptä½œç”¨åŸŸï¼‰ã€‘
+# ç›´æ¥åœ¨WebServeré¡¶å±‚å¯¼å…¥ï¼Œç¡®ä¿æ‰€æœ‰å‡½æ•°åœ¨scriptä½œç”¨åŸŸå¯ç”¨
 # ==============================================
 function Import-BusinessModules {
     [CmdletBinding()]
@@ -20,17 +20,17 @@ function Import-BusinessModules {
     $functionsDir = Join-Path -Path $PSScriptRoot -ChildPath "../Functions"
     $helpersDir = Join-Path -Path $PSScriptRoot -ChildPath "../Helpers"
 
-    # ÑéÖ¤Ä¿Â¼´æÔÚ
+    # éªŒè¯ç›®å½•å­˜åœ¨
     if (-not (Test-Path $functionsDir -PathType Container)) {
-        throw "FunctionsÄ¿Â¼²»´æÔÚ: $functionsDir"
+        throw "Functionsç›®å½•ä¸å­˜åœ¨: $functionsDir"
     }
     if (-not (Test-Path $helpersDir -PathType Container)) {
-        throw "HelpersÄ¿Â¼²»´æÔÚ: $helpersDir"
+        throw "Helpersç›®å½•ä¸å­˜åœ¨: $helpersDir"
     }
 
-    # µ¼ÈëºËĞÄÄ£¿é£¨ÏÔÊ½script×÷ÓÃÓò£©
+    # å¯¼å…¥æ ¸å¿ƒæ¨¡å—ï¼ˆæ˜¾å¼scriptä½œç”¨åŸŸï¼‰
     try {
-        Write-Host "[Ä£¿é] ¿ªÊ¼µ¼ÈëÒµÎñÄ£¿é..."
+        Write-Host "[æ¨¡å—] å¼€å§‹å¯¼å…¥ä¸šåŠ¡æ¨¡å—..."
         . (Join-Path $functionsDir "DomainOperations.ps1")
         . (Join-Path $functionsDir "UserOperations.ps1")
         . (Join-Path $functionsDir "GroupOperations.ps1")
@@ -39,13 +39,13 @@ function Import-BusinessModules {
         . (Join-Path $helpersDir "PinyinConverter.ps1")
         . (Join-Path $helpersDir "importExportUsers.ps1")
 
-        # ÑéÖ¤ºËĞÄº¯ÊıÊÇ·ñ´æÔÚ£¨±ØĞëÍ¨¹ı£¬·ñÔò·şÎñÆ÷ÎŞ·¨Æô¶¯£©
+        # éªŒè¯æ ¸å¿ƒå‡½æ•°æ˜¯å¦å­˜åœ¨ï¼ˆå¿…é¡»é€šè¿‡ï¼Œå¦åˆ™æœåŠ¡å™¨æ— æ³•å¯åŠ¨ï¼‰
         $requiredFuncs = @(
             "Get-ConnectionStatus", "Connect-ToDomain", "Disconnect-FromDomain",
             "Get-OUList", "Create-OU", "Switch-OU",
             "Get-UserList", "Create-User", "Toggle-UserEnabled", "Filter-Users",
             "Get-GroupList", "Create-Group", "Add-UserToGroup", "Filter-Groups",
-            "Read-RequestData"  # ´ÓRouter.ps1Ç¨ÒÆµ½Helpers»òÖ±½Ó¶¨Òå
+            "Read-RequestData"  # ä»Router.ps1è¿ç§»åˆ°Helpersæˆ–ç›´æ¥å®šä¹‰
         )
 
         $missingFuncs = @()
@@ -56,20 +56,20 @@ function Import-BusinessModules {
         }
 
         if ($missingFuncs.Count -gt 0) {
-            throw "ÒÔÏÂºËĞÄº¯ÊıÈ±Ê§£¨¼ì²é¶ÔÓ¦.ps1ÎÄ¼ş£©: $($missingFuncs -join ', ')"
+            throw "ä»¥ä¸‹æ ¸å¿ƒå‡½æ•°ç¼ºå¤±ï¼ˆæ£€æŸ¥å¯¹åº”.ps1æ–‡ä»¶ï¼‰: $($missingFuncs -join ', ')"
         }
 
-        Write-Host "[Ä£¿é] 14¸öºËĞÄÒµÎñº¯ÊıÈ«²¿µ¼Èë³É¹¦£¨script×÷ÓÃÓò£©"
+        Write-Host "[æ¨¡å—] 14ä¸ªæ ¸å¿ƒä¸šåŠ¡å‡½æ•°å…¨éƒ¨å¯¼å…¥æˆåŠŸï¼ˆscriptä½œç”¨åŸŸï¼‰"
     }
     catch {
-        Write-Error "[Ä£¿é] µ¼ÈëÊ§°Ü: $_"
-        throw  # ÖÕÖ¹·şÎñÆ÷Æô¶¯
+        Write-Error "[æ¨¡å—] å¯¼å…¥å¤±è´¥: $_"
+        throw  # ç»ˆæ­¢æœåŠ¡å™¨å¯åŠ¨
     }
 }
 
 # ==============================================
-# ¡¾Ç¨ÒÆ£º´ÓRouter.ps1¸´ÖÆRead-RequestDataµ½´Ë´¦¡¿
-# ±ÜÃâÒÀÀµRouter.ps1£¬Ö±½ÓÔÚWebServerÖĞ¶¨Òå
+# ã€è¿ç§»ï¼šä»Router.ps1å¤åˆ¶Read-RequestDataåˆ°æ­¤å¤„ã€‘
+# é¿å…ä¾èµ–Router.ps1ï¼Œç›´æ¥åœ¨WebServerä¸­å®šä¹‰
 # ==============================================
 function script:Read-RequestData {
     param([System.Net.HttpListenerContext]$context)
@@ -85,13 +85,13 @@ function script:Read-RequestData {
         return $null
     }
     catch {
-        Write-Error "¶ÁÈ¡ÇëÇóÊı¾İÊ§°Ü: $_"
+        Write-Error "è¯»å–è¯·æ±‚æ•°æ®å¤±è´¥: $_"
         return $null
     }
 }
 
 # ==============================================
-# Ç°¶ËÄ¿Â¼½âÎö£¨±£Áô£©
+# å‰ç«¯ç›®å½•è§£æï¼ˆä¿ç•™ï¼‰
 # ==============================================
 function Resolve-FrontendPath {
     [CmdletBinding()]
@@ -100,17 +100,17 @@ function Resolve-FrontendPath {
     $rawPath = Join-Path -Path $PSScriptRoot -ChildPath "../../Frontend"
     try {
         $resolvedPath = Convert-Path -Path $rawPath -ErrorAction Stop
-        Write-Host "[ĞÅÏ¢] Ç°¶ËÄ¿Â¼½âÎö³É¹¦: $resolvedPath"
+        Write-Host "[ä¿¡æ¯] å‰ç«¯ç›®å½•è§£ææˆåŠŸ: $resolvedPath"
         return $resolvedPath
     }
     catch {
-        Write-Warning "[¾¯¸æ] Ç°¶ËÄ¿Â¼×ª»»Ê§°Ü£¬Ê¹ÓÃÔ­Ê¼Â·¾¶: $rawPath"
+        Write-Warning "[è­¦å‘Š] å‰ç«¯ç›®å½•è½¬æ¢å¤±è´¥ï¼Œä½¿ç”¨åŸå§‹è·¯å¾„: $rawPath"
         return $rawPath
     }
 }
 
 # ==============================================
-# URLÈ¨ÏŞÅäÖÃ£¨±£Áô£©
+# URLæƒé™é…ç½®ï¼ˆä¿ç•™ï¼‰
 # ==============================================
 function Configure-UrlAcl {
     [CmdletBinding()]
@@ -121,25 +121,25 @@ function Configure-UrlAcl {
     
     $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
     if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        throw "ÇëÒÔ¹ÜÀíÔ±Éí·İÔËĞĞ£¬·ñÔòÎŞ·¨ÅäÖÃURL¶Ë¿ÚÈ¨ÏŞ"
+        throw "è¯·ä»¥ç®¡ç†å‘˜èº«ä»½è¿è¡Œï¼Œå¦åˆ™æ— æ³•é…ç½®URLç«¯å£æƒé™"
     }
     
     try {
         $netshOutput = netsh http add urlacl url=$prefix user=Administrators 2>&1
-        if ($LASTEXITCODE -ne 0 -and $netshOutput -notmatch "ÒÑ´æÔÚ") {
-            Write-Warning "[¾¯¸æ] URLÈ¨ÏŞ×¢²á²»ÍêÈ«£¬µ«¼ÌĞø³¢ÊÔÆô¶¯: $netshOutput"
+        if ($LASTEXITCODE -ne 0 -and $netshOutput -notmatch "å·²å­˜åœ¨") {
+            Write-Warning "[è­¦å‘Š] URLæƒé™æ³¨å†Œä¸å®Œå…¨ï¼Œä½†ç»§ç»­å°è¯•å¯åŠ¨: $netshOutput"
         }
         else {
-            Write-Host "[ĞÅÏ¢] URLÈ¨ÏŞÅäÖÃ³É¹¦: $prefix"
+            Write-Host "[ä¿¡æ¯] URLæƒé™é…ç½®æˆåŠŸ: $prefix"
         }
     }
     catch {
-        Write-Warning "[¾¯¸æ] URLÈ¨ÏŞÅäÖÃÊ§°Ü£¨¿ÉÄÜ²»Ó°Ïì±¾µØ²âÊÔ£©: $_"
+        Write-Warning "[è­¦å‘Š] URLæƒé™é…ç½®å¤±è´¥ï¼ˆå¯èƒ½ä¸å½±å“æœ¬åœ°æµ‹è¯•ï¼‰: $_"
     }
 }
 
 # ==============================================
-# Æô¶¯·şÎñÆ÷£¨±£Áô£¬ÒÆ³ıRouter.ps1ÒÀÀµ£©
+# å¯åŠ¨æœåŠ¡å™¨ï¼ˆä¿ç•™ï¼Œç§»é™¤Router.ps1ä¾èµ–ï¼‰
 # ==============================================
 function Start-WebServer {
     [CmdletBinding()]
@@ -147,32 +147,32 @@ function Start-WebServer {
         [string]$prefix = "http://localhost:8080/"
     )
 
-    # 1. µ¼ÈëÒµÎñÄ£¿é£¨±ØĞëµÚÒ»²½£©
+    # 1. å¯¼å…¥ä¸šåŠ¡æ¨¡å—ï¼ˆå¿…é¡»ç¬¬ä¸€æ­¥ï¼‰
     try {
         Import-BusinessModules
     }
     catch {
-        Write-Error "[ÖÂÃü] Ä£¿éµ¼ÈëÊ§°Ü£¬·şÎñÆ÷ÎŞ·¨Æô¶¯: $_"
+        Write-Error "[è‡´å‘½] æ¨¡å—å¯¼å…¥å¤±è´¥ï¼ŒæœåŠ¡å™¨æ— æ³•å¯åŠ¨: $_"
         return
     }
 
-    # 2. ½âÎöÇ°¶ËÄ¿Â¼
+    # 2. è§£æå‰ç«¯ç›®å½•
     $script:frontendPath = Resolve-FrontendPath
     if (-not (Test-Path -Path $script:frontendPath -PathType Container)) {
-        Write-Error "[ÖÂÃü´íÎó] Ç°¶ËÄ¿Â¼²»´æÔÚ: $script:frontendPath"
+        Write-Error "[è‡´å‘½é”™è¯¯] å‰ç«¯ç›®å½•ä¸å­˜åœ¨: $script:frontendPath"
         return
     }
 
-    # 3. ÅäÖÃURLÈ¨ÏŞ
+    # 3. é…ç½®URLæƒé™
     try {
         Configure-UrlAcl -prefix $prefix
     }
     catch {
-        Write-Error "[ÖÂÃü´íÎó] È¨ÏŞÅäÖÃÊ§°Ü: $_"
+        Write-Error "[è‡´å‘½é”™è¯¯] æƒé™é…ç½®å¤±è´¥: $_"
         return
     }
 
-    # 4. Æô¶¯¼àÌıÆ÷
+    # 4. å¯åŠ¨ç›‘å¬å™¨
     if (-not $script:httpListener.IsListening) {
         $script:httpListener.Prefixes.Clear()
         $script:httpListener.Prefixes.Add($prefix)
@@ -180,52 +180,52 @@ function Start-WebServer {
         try {
             $script:httpListener.Start()
             Write-Host "`n====================================="
-            Write-Host "Web·şÎñÆ÷ÒÑÆô¶¯£¨PowerShell 5.1¼æÈİ£©"
-            Write-Host "·ÃÎÊµØÖ·: $prefix"
-            Write-Host "Ç°¶ËÄ¿Â¼: $script:frontendPath"
-            Write-Host "°´Ctrl+CÍ£Ö¹·şÎñÆ÷"
+            Write-Host "WebæœåŠ¡å™¨å·²å¯åŠ¨ï¼ˆPowerShell 5.1å…¼å®¹ï¼‰"
+            Write-Host "è®¿é—®åœ°å€: $prefix"
+            Write-Host "å‰ç«¯ç›®å½•: $script:frontendPath"
+            Write-Host "æŒ‰Ctrl+Cåœæ­¢æœåŠ¡å™¨"
             Write-Host "=====================================`n"
 
-            # 5. ´¦ÀíÇëÇó£¨ºËĞÄ£ºÖ±½ÓÏÔÊ½ÅĞ¶ÏÂ·ÓÉ£©
+            # 5. å¤„ç†è¯·æ±‚ï¼ˆæ ¸å¿ƒï¼šç›´æ¥æ˜¾å¼åˆ¤æ–­è·¯ç”±ï¼‰
             while ($script:httpListener.IsListening) {
                 try {
                     $context = $script:httpListener.GetContext()
                     Handle-Request -context $context
                 }
                 catch [System.Net.HttpListenerException] {
-                    if ($_.Exception.Message -notmatch "²Ù×÷ÒÑÈ¡Ïû") {
-                        Write-Error "[ÇëÇóÒì³£] HttpListener´íÎó: $($_.Exception.Message)"
+                    if ($_.Exception.Message -notmatch "æ“ä½œå·²å–æ¶ˆ") {
+                        Write-Error "[è¯·æ±‚å¼‚å¸¸] HttpListeneré”™è¯¯: $($_.Exception.Message)"
                     }
                 }
                 catch {
-                    Write-Error "[ÇëÇóÒì³£] Î´Öª´íÎó: $($_.Exception.Message)"
+                    Write-Error "[è¯·æ±‚å¼‚å¸¸] æœªçŸ¥é”™è¯¯: $($_.Exception.Message)"
                 }
             }
         }
         catch {
-            Write-Error "[ÖÂÃü´íÎó] ·şÎñÆ÷Æô¶¯Ê§°Ü£¨¶Ë¿Ú¿ÉÄÜ±»Õ¼ÓÃ£©: $($_.Exception.Message)"
-            Write-Host "`nÅÅ²é½¨Òé£º"
-            Write-Host "1. ¼ì²é¶Ë¿ÚÕ¼ÓÃ£ºnetstat -ano | findstr :$([Uri]$prefix | Select-Object -ExpandProperty Port)"
-            Write-Host "2. ½áÊøÕ¼ÓÃ½ø³Ì£ºtaskkill /F /PID ¡¾Õ¼ÓÃ½ø³ÌID¡¿"
-            Write-Host "3. ¸ü»»¶Ë¿ÚÆô¶¯£ºStart-WebServer -Prefix http://localhost:8081/"
+            Write-Error "[è‡´å‘½é”™è¯¯] æœåŠ¡å™¨å¯åŠ¨å¤±è´¥ï¼ˆç«¯å£å¯èƒ½è¢«å ç”¨ï¼‰: $($_.Exception.Message)"
+            Write-Host "`næ’æŸ¥å»ºè®®ï¼š"
+            Write-Host "1. æ£€æŸ¥ç«¯å£å ç”¨ï¼šnetstat -ano | findstr :$([Uri]$prefix | Select-Object -ExpandProperty Port)"
+            Write-Host "2. ç»“æŸå ç”¨è¿›ç¨‹ï¼štaskkill /F /PID ã€å ç”¨è¿›ç¨‹IDã€‘"
+            Write-Host "3. æ›´æ¢ç«¯å£å¯åŠ¨ï¼šStart-WebServer -Prefix http://localhost:8081/"
         }
     }
 }
 
 # ==============================================
-# Í£Ö¹·şÎñÆ÷£¨±£Áô£©
+# åœæ­¢æœåŠ¡å™¨ï¼ˆä¿ç•™ï¼‰
 # ==============================================
 function Stop-WebServer {
     if ($script:httpListener.IsListening) {
         $script:httpListener.Stop()
         $script:httpListener.Close()
-        Write-Host "`n[ĞÅÏ¢] Web·şÎñÆ÷ÒÑÍ£Ö¹"
+        Write-Host "`n[ä¿¡æ¯] WebæœåŠ¡å™¨å·²åœæ­¢"
     }
 }
 
 # ==============================================
-# ¡¾ºËĞÄĞŞ¸Ä2£ºÏÔÊ½Â·ÓÉÅĞ¶Ï£¨³¹µ×½â¾ö×÷ÓÃÓòÎÊÌâ£©¡¿
-# ²»ÔÙÓÃÂ·ÓÉ¹şÏ£±í£¬Ö±½Óif-elseÅĞ¶Ï·½·¨+Â·¾¶
+# ã€æ ¸å¿ƒä¿®æ”¹2ï¼šæ˜¾å¼è·¯ç”±åˆ¤æ–­ï¼ˆå½»åº•è§£å†³ä½œç”¨åŸŸé—®é¢˜ï¼‰ã€‘
+# ä¸å†ç”¨è·¯ç”±å“ˆå¸Œè¡¨ï¼Œç›´æ¥if-elseåˆ¤æ–­æ–¹æ³•+è·¯å¾„
 # ==============================================
 function Handle-Request {
     [CmdletBinding()]
@@ -239,15 +239,15 @@ function Handle-Request {
     $path = $request.Url.LocalPath
     $method = $request.HttpMethod
 
-    Write-Host "[ÇëÇó] $method $path"
+    Write-Host "[è¯·æ±‚] $method $path"
 
     try {
         # ==========================================
-        # ÏÔÊ½Â·ÓÉÆ¥Åä£¨Ö±½Óµ÷ÓÃscript×÷ÓÃÓòº¯Êı£©
+        # æ˜¾å¼è·¯ç”±åŒ¹é…ï¼ˆç›´æ¥è°ƒç”¨scriptä½œç”¨åŸŸå‡½æ•°ï¼‰
         # ==========================================
-        # Óò²Ù×÷Â·ÓÉ
+        # åŸŸæ“ä½œè·¯ç”±
         if ($method -eq "GET" -and $path -eq "/api/connection-status") {
-            & $script:Get-ConnectionStatus $context  # ÏÔÊ½Ö¸¶¨script×÷ÓÃÓò
+            Get-ConnectionStatus $context  # æ˜¾å¼æŒ‡å®šscriptä½œç”¨åŸŸ
         }
         elseif ($method -eq "POST" -and $path -eq "/api/connect") {
             & $script:Connect-ToDomain $context
@@ -255,7 +255,7 @@ function Handle-Request {
         elseif ($method -eq "POST" -and $path -eq "/api/disconnect") {
             & $script:Disconnect-FromDomain $context
         }
-        # OU²Ù×÷Â·ÓÉ
+        # OUæ“ä½œè·¯ç”±
         elseif ($method -eq "GET" -and $path -eq "/api/ous") {
             & $script:Get-OUList $context
         }
@@ -265,7 +265,7 @@ function Handle-Request {
         elseif ($method -eq "POST" -and $path -eq "/api/switch-ou") {
             & $script:Switch-OU $context
         }
-        # ÓÃ»§²Ù×÷Â·ÓÉ
+        # ç”¨æˆ·æ“ä½œè·¯ç”±
         elseif ($method -eq "GET" -and $path -eq "/api/users") {
             & $script:Get-UserList $context
         }
@@ -276,9 +276,9 @@ function Handle-Request {
             & $script:Toggle-UserEnabled $context
         }
         elseif ($method -eq "GET" -and $path -like "/api/users/filter*") {
-            & $script:Filter-Users $context  # ´¦Àí´ø²ÎÊıµÄÂ·ÓÉ
+            & $script:Filter-Users $context  # å¤„ç†å¸¦å‚æ•°çš„è·¯ç”±
         }
-        # ×é²Ù×÷Â·ÓÉ
+        # ç»„æ“ä½œè·¯ç”±
         elseif ($method -eq "GET" -and $path -eq "/api/groups") {
             & $script:Get-GroupList $context
         }
@@ -291,17 +291,17 @@ function Handle-Request {
         elseif ($method -eq "GET" -and $path -like "/api/groups/filter*") {
             & $script:Filter-Groups $context
         }
-        # ¾²Ì¬ÎÄ¼şÂ·ÓÉ
+        # é™æ€æ–‡ä»¶è·¯ç”±
         elseif ($method -eq "GET") {
             Serve-StaticFile -context $context
         }
-        # 404Â·ÓÉ
+        # 404è·¯ç”±
         else {
             Send-Response -response $response -statusCode 404 -content "Not Found"
         }
     }
     catch {
-        Write-Error "[´¦Àí´íÎó] $($_.Exception.Message)"
+        Write-Error "[å¤„ç†é”™è¯¯] $($_.Exception.Message)"
         Send-Response -response $response -statusCode 500 -content "Internal Server Error: $($_.Exception.Message)"
     }
     finally {
@@ -311,7 +311,7 @@ function Handle-Request {
 }
 
 # ==============================================
-# ÒÔÏÂº¯Êı±£Áô²»±ä£¨½öÈ·±£Send-JsonResponseÔÚscript×÷ÓÃÓò£©
+# ä»¥ä¸‹å‡½æ•°ä¿ç•™ä¸å˜ï¼ˆä»…ç¡®ä¿Send-JsonResponseåœ¨scriptä½œç”¨åŸŸï¼‰
 # ==============================================
 function Serve-StaticFile {
     [CmdletBinding()]
@@ -340,15 +340,15 @@ function Serve-StaticFile {
             $response.ContentType = Get-ContentType -filePath $filePath
             $response.OutputStream.Write($bytes, 0, $bytes.Length)
 
-            Write-Host "[ÏìÓ¦] 200 OK: $filePath"
+            Write-Host "[å“åº”] 200 OK: $filePath"
         }
         catch {
-            Send-Response -response $response -statusCode 500 -content "ÎŞ·¨¶ÁÈ¡ÎÄ¼ş: $($_.Exception.Message)"
+            Send-Response -response $response -statusCode 500 -content "æ— æ³•è¯»å–æ–‡ä»¶: $($_.Exception.Message)"
         }
     }
     else {
-        Write-Host "[ÏìÓ¦] 404 Î´ÕÒµ½: $filePath"
-        Send-Response -response $response -statusCode 404 -content "ÎÄ¼şÎ´ÕÒµ½: $path"
+        Write-Host "[å“åº”] 404 æœªæ‰¾åˆ°: $filePath"
+        Send-Response -response $response -statusCode 404 -content "æ–‡ä»¶æœªæ‰¾åˆ°: $path"
     }
 }
 
@@ -389,11 +389,11 @@ function Send-Response {
         $response.OutputStream.Flush()
     }
     catch {
-        Write-Warning "[ÏìÓ¦¾¯¸æ] Ğ´ÈëÊ§°Ü: $($_.Exception.Message)"
+        Write-Warning "[å“åº”è­¦å‘Š] å†™å…¥å¤±è´¥: $($_.Exception.Message)"
     }
 }
 
-# ¡¾¹Ø¼üĞŞ¸Ä3£ºSend-JsonResponseÇ¿ÖÆscript×÷ÓÃÓò¡¿
+# ã€å…³é”®ä¿®æ”¹3ï¼šSend-JsonResponseå¼ºåˆ¶scriptä½œç”¨åŸŸã€‘
 function script:Send-JsonResponse {
     [CmdletBinding()]
     param(
@@ -407,9 +407,10 @@ function script:Send-JsonResponse {
     Send-Response -response $response -statusCode $statusCode -content $json -contentType "application/json; charset=utf-8"
 }
 
-# ÖÕÖ¹´¦Àí£¨±£Áô£©
+# ç»ˆæ­¢å¤„ç†ï¼ˆä¿ç•™ï¼‰
 $exitHandler = {
     Stop-WebServer
     exit 0
 }
+
 Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action $exitHandler | Out-Null
