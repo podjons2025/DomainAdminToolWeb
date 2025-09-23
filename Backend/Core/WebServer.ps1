@@ -230,6 +230,7 @@ function Stop-WebServer {
 # 【核心修改2：显式路由判断（彻底解决作用域问题）】
 # 不再用路由哈希表，直接if-else判断方法+路径
 # ==============================================
+# 替换原文件中Handle-Request函数内的路由处理部分（大约在251-286行）
 function Handle-Request {
     [CmdletBinding()]
     param(
@@ -246,11 +247,11 @@ function Handle-Request {
 
     try {
         # ==========================================
-        # 显式路由匹配（直接调用script作用域函数）
+        # 路由匹配（正确调用script作用域中的函数）
         # ==========================================
-        # 域操作路由
+        # 连接相关路由
         if ($method -eq "GET" -and $path -eq "/api/connection-status") {
-            & $script:Get-ConnectionStatus $context  # 显式指定script作用域
+            & $script:Get-ConnectionStatus $context
         }
         elseif ($method -eq "POST" -and $path -eq "/api/connect") {
             & $script:Connect-ToDomain $context
@@ -258,7 +259,7 @@ function Handle-Request {
         elseif ($method -eq "POST" -and $path -eq "/api/disconnect") {
             & $script:Disconnect-FromDomain $context
         }
-        # OU操作路由
+        # OU管理路由
         elseif ($method -eq "GET" -and $path -eq "/api/ous") {
             & $script:Get-OUList $context
         }
@@ -268,7 +269,7 @@ function Handle-Request {
         elseif ($method -eq "POST" -and $path -eq "/api/switch-ou") {
             & $script:Switch-OU $context
         }
-        # 用户操作路由
+        # 用户管理路由
         elseif ($method -eq "GET" -and $path -eq "/api/users") {
             & $script:Get-UserList $context
         }
@@ -279,9 +280,9 @@ function Handle-Request {
             & $script:Toggle-UserEnabled $context
         }
         elseif ($method -eq "GET" -and $path -like "/api/users/filter*") {
-            & $script:Filter-Users $context  # 处理带参数的路由
+            & $script:Filter-Users $context
         }
-        # 组操作路由
+        # 组管理路由
         elseif ($method -eq "GET" -and $path -eq "/api/groups") {
             & $script:Get-GroupList $context
         }
@@ -294,24 +295,27 @@ function Handle-Request {
         elseif ($method -eq "GET" -and $path -like "/api/groups/filter*") {
             & $script:Filter-Groups $context
         }
-        # 静态文件路由
+        # 静态文件处理
         elseif ($method -eq "GET") {
             Serve-StaticFile -context $context
         }
-        # 404路由
         else {
-            Send-Response -response $response -statusCode 404 -content "Not Found"
+            Send-Response -response $response -statusCode 404 -content "未找到请求的资源"
         }
     }
     catch {
         Write-Error "[处理错误] $($_.Exception.Message)"
-        Send-Response -response $response -statusCode 500 -content "Internal Server Error: $($_.Exception.Message)"
+        Send-Response -response $response -statusCode 500 -content "服务器内部错误: $($_.Exception.Message)"
     }
     finally {
-        $response.OutputStream.Flush()
+		$response.OutputStream.Flush()
         $response.Close()
     }
 }
+
+
+
+
 
 # ==============================================
 # 以下函数保留不变（仅确保Send-JsonResponse在script作用域）

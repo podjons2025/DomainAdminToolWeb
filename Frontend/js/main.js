@@ -220,47 +220,44 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     // 检查连接状态
-    function checkConnectionStatus() {
-        fetch('/api/connection-status')
-            .then(response => response.json())
-            .then(data => {
-                isConnected = data.isConnected;
-                connectionStatus.textContent = data.status;
-                userCountElem.textContent = `用户数: ${data.userCount}`;
-                groupCountElem.textContent = `组数: ${data.groupCount}`;
-                
-                if (data.currentOU) {
-                    currentOuDisplay.textContent = data.currentOU;
-                }
-                
-                // 更新UI状态
-                if (isConnected) {
-                    connectBtn.disabled = true;
-                    disconnectBtn.disabled = false;
-                    ouPanel.style.display = 'block';
-                    userPanel.style.display = 'block';
-                    groupPanel.style.display = 'block';
-                    
-                    // 加载数据
-                    loadUsers();
-                    loadGroups();
-                } else {
-                    connectBtn.disabled = false;
-                    disconnectBtn.disabled = true;
-                    ouPanel.style.display = 'none';
-                    userPanel.style.display = 'none';
-                    groupPanel.style.display = 'none';
-                    
-                    // 清空表格
-                    usersBody.innerHTML = '<tr><td colspan="8" class="empty-state">请先连接到域并加载用户</td></tr>';
-                    groupsBody.innerHTML = '<tr><td colspan="4" class="empty-state">请先连接到域并加载组</td></tr>';
-                }
-            })
-            .catch(error => {
-                console.error('检查连接状态失败:', error);
-                showMessage('检查连接状态失败', 'error');
-            });
-    }
+	function checkConnectionStatus() {
+		fetch('/api/connection-status')
+			.then(response => response.json())
+			.then(data => {
+				// 修正属性名从isConnected改为connected（与后端返回一致）
+				isConnected = data.connected;
+				connectionStatus.textContent = data.connected ? `已连接到: ${data.domain}` : '未连接到域';
+				userCountElem.textContent = `用户数: ${data.userCount || 0}`;
+				groupCountElem.textContent = `组数: ${data.groupCount || 0}`;
+				
+				if (data.currentOU) {
+					currentOuDisplay.textContent = data.currentOU;
+				}
+				
+				// 更新UI状态
+				if (isConnected) {
+					connectBtn.disabled = true;
+					disconnectBtn.disabled = false;
+					ouPanel.style.display = 'block';
+					userPanel.style.display = 'block';
+					groupPanel.style.display = 'block';
+					
+					// 加载数据
+					loadUsers();
+					loadGroups();
+					loadOUs();
+				} else {
+					connectBtn.disabled = false;
+					disconnectBtn.disabled = true;
+					ouPanel.style.display = 'none';
+					userPanel.style.display = 'none';
+					groupPanel.style.display = 'none';
+				}
+			})
+			.catch(err => {
+				showMessage('检查连接状态失败: ' + err.message, 'error');
+			});
+	}
     
     // 连接到域
     connectionForm.addEventListener('submit', function(e) {
