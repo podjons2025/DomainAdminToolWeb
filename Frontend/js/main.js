@@ -1,3 +1,155 @@
+// 全局变量
+let currentPage = 1;
+const pageSize = 20;
+const usersBody = document.getElementById('users-body');
+
+// 渲染用户表格（支持分页数据）
+function renderUsersTable(users) {
+    usersBody.innerHTML = '';
+    
+    if (users.length === 0) {
+        usersBody.innerHTML = '<tr><td colspan="8" class="empty-state">未找到用户</td></tr>';
+        return;
+    }
+    
+    users.forEach(user => {
+        const row = document.createElement('tr');
+        row.dataset.sam = user.SamAccountName;
+        
+        // 行点击选中逻辑
+        row.addEventListener('click', function(e) {
+            if (e.target.tagName === 'BUTTON') return;
+            row.classList.toggle('selected');
+            updateSelectedUsers();
+        });
+        
+        row.innerHTML = `
+            <td>${user.DisplayName || '-'}</td>
+            <td>${user.SamAccountName}</td>
+            <td>${user.EmailAddress || '-'}</td>
+            <td>${user.TelePhoneNumber || '-'}</td>
+            <td>${user.Description || '-'}</td>
+            <td>${user.MemberOf || '-'}</td>
+            <td>
+                <span class="status-label ${user.Enabled ? 'status-enabled' : 'status-disabled'}">
+                    ${user.Enabled ? '启用' : '禁用'}
+                </span>
+            </td>
+            <td class="action-buttons">
+                <button class="btn ${user.Enabled ? 'danger' : 'primary'}" 
+                        onclick="toggleUserStatus('${user.SamAccountName}', ${!user.Enabled})">
+                    ${user.Enabled ? '禁用' : '启用'}
+                </button>
+            </td>
+        `;
+        
+        usersBody.appendChild(row);
+    });
+}
+
+// 加载用户列表（带分页参数）
+function loadUsers() {
+    const sessionId = getCookie('SessionId');
+    fetch(`/api/users?page=${currentPage}&pageSize=${pageSize}`, {
+        headers: { 'Cookie': `SessionId=${sessionId}` }
+    })
+    .then(res => {
+        if (!res.ok) throw new Error('获取用户列表失败');
+        return res.json();
+    })
+    .then(data => {
+        if (data.success) {
+            renderUsersTable(data.users);
+            renderPagination(data.total, data.page, data.pageSize);
+        } else {
+            showMessage(data.message, 'error');
+        }
+    })
+    .catch(err => showMessage(err.message, 'error'));
+}
+
+// 渲染分页控件
+function renderPagination(total, currentPage, pageSize) {
+    const totalPages = Math.ceil(total / pageSize);
+    const paginationHtml = `
+        <div class="pagination">
+            <button onclick="changePage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>上一页</button>
+            <span>第 ${currentPage}/${totalPages} 页</span>
+            <button onclick="changePage(${currentPage + 1})" ${currentPage >= totalPages ? 'disabled' : ''}>下一页</button>
+        </div>
+    `;
+    document.getElementById('pagination-users').innerHTML = paginationHtml;
+}
+
+// 切换页码
+function changePage(page) {
+    if (page < 1) return;
+    currentPage = page;
+    loadUsers();
+}
+
+// 密码验证函数（与后端规则一致）
+function validatePassword(password) {
+    if (password.length < 8) return "密码长度至少8位";
+    if (!/[A-Z]/.test(password)) return "需包含大写字母";
+    if (!/[a-z]/.test(password)) return "需包含小写字母";
+    if (!/[0-9]/.test(password)) return "需包含数字";
+    if (!/[^a-zA-Z0-9]/.test(password)) return "需包含特殊字符（如@#$）";
+    return null;
+}
+
+// 绑定密码输入验证
+document.addEventListener('DOMContentLoaded', function() {
+    // 密码输入框失焦验证
+    document.getElementById('user-password').addEventListener('blur', function() {
+        const password = this.value;
+        const error = validatePassword(password);
+        if (error) {
+            showMessage(error, 'error', true);
+        } else if (password) {
+            showMessage('密码格式正确', 'success');
+        }
+    });
+
+    // 用户表单提交验证
+    document.getElementById('user-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const password = document.getElementById('user-password').value;
+        const error = validatePassword(password);
+        if (error) {
+            showMessage(error, 'error', true);
+            return;
+        }
+        // 提交表单逻辑...
+        submitUserForm();
+    });
+});
+
+// 消息提示函数（错误消息不自动关闭）
+function showMessage(text, type = 'info', persist = false) {
+    const messageBox = document.getElementById('message-box');
+    const messageContent = document.getElementById('message-content');
+    
+    messageContent.textContent = text;
+    messageBox.className = `message-box ${type}`;
+    messageBox.classList.remove('hidden');
+    
+    // 仅非错误消息和非持久消息自动关闭
+    if (type !== 'error' && !persist) {
+        setTimeout(() => {
+            messageBox.classList.add('hidden');
+        }, 5000);
+    }
+}
+
+// 辅助函数：获取Cookie
+function getCookie(name) {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+    return null;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     // DOM元素引用
     const connectionForm = document.getElementById('connection-form');

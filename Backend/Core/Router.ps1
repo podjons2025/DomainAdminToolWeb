@@ -1,21 +1,21 @@
 <# 
-路由注册与管理（修复函数作用域问题）
+注意：请不要随意修改此文件，可能导致功能异常
 #>
 
 function Register-Routes {
-    # 清除现有路由
+    # 初始化路由集合
     $script:routes.Clear()
 
-    # 1. 定义绝对路径（已验证正确，保留）
+    # 1. 加载功能模块并验证正确性
     $functionsDir = Join-Path -Path $PSScriptRoot -ChildPath "../Functions"
     $helpersDir = Join-Path -Path $PSScriptRoot -ChildPath "../Helpers"
 
     # ==============================================
-    # 核心修复：强制函数进入script作用域
-    # 用 $script:null = . 加载模块，让函数定义在script作用域生效
+    # 关键修改点：强制加载并合并到script作用域
+    # 使用 $script:null = . 语法，确保加载到script作用域生效
     # ==============================================
     try {
-        # 导入功能模块（强制script作用域）
+        # 加载业务模块（强制到script作用域）
         $script:null = . (Join-Path -Path $functionsDir -ChildPath "DomainOperations.ps1")
         $script:null = . (Join-Path -Path $functionsDir -ChildPath "UserOperations.ps1")
         $script:null = . (Join-Path -Path $functionsDir -ChildPath "GroupOperations.ps1")
@@ -24,41 +24,42 @@ function Register-Routes {
         $script:null = . (Join-Path -Path $helpersDir -ChildPath "PinyinConverter.ps1")
         $script:null = . (Join-Path -Path $helpersDir -ChildPath "importExportUsers.ps1")
 
-        Write-Host "[路由] 业务模块导入成功（目录：$functionsDir）"
+        Write-Host "[路由] 业务模块加载成功，目录：$functionsDir"
     }
     catch {
-        Write-Error "[路由] 业务模块导入失败！文件缺失或语法错误：$_"
+        Write-Error "[路由] 业务模块加载失败，文件缺失或语法错误：$_"
         return
     }
 
     # ==============================================
-    # 关键验证：在script作用域检查函数是否存在
+    # 验证关键功能函数是否已正确加载到script作用域
     # ==============================================
     $requiredFunctions = @(
         "Connect-ToDomain", "Disconnect-FromDomain", "Get-ConnectionStatus",
         "Get-OUList", "Create-OU", "Switch-OU",
         "Get-UserList", "Create-User", "Toggle-UserEnabled", "Filter-Users",
-        "Get-GroupList", "Create-Group", "Add-UserToGroup", "Filter-Groups"
+        "Get-GroupList", "Create-Group", "Add-UserToGroup", "Filter-Groups",
+		"Read-RequestData" 
     )
 
     $missingFunctions = @()
     foreach ($func in $requiredFunctions) {
-        # 明确在script作用域查找函数
+        # 验证函数是否存在于script作用域
         if (-not (Get-Command -Name $func -CommandType Function -Scope Script -ErrorAction SilentlyContinue)) {
             $missingFunctions += $func
         }
     }
 
     if ($missingFunctions.Count -gt 0) {
-        Write-Error "[路由] script作用域缺失函数：$($missingFunctions -join ', ')"
-        Write-Error "原因：1. 对应.ps1文件中未定义该函数；2. 函数定义有语法错误；3. 导入未进入script作用域"
+        Write-Error "[路由] script作用域缺失以下函数：$($missingFunctions -join ', ')"
+        Write-Error "可能原因：1. 对应.ps1文件未正确加载 2. 函数存在语法错误 3. 未加载到script作用域"
         return
     }
     else {
-        Write-Host "[路由] script作用域验证通过，14个核心函数均存在"
+        Write-Host "[路由] script作用域验证通过，共14个必要函数"
     }
 
-    # 3. 注册路由（保留原有绑定，此时函数在script作用域可见）
+    # 3. 注册路由，核心逻辑：将请求映射到对应的script作用域函数
     $script:routes["POST|/api/connect"] = { param($ctx) Get-ConnectionStatus $ctx }
     $script:routes["POST|/api/disconnect"] = { param($ctx) Disconnect-FromDomain $ctx }
     $script:routes["GET|/api/connection-status"] = { param($ctx) Get-ConnectionStatus $ctx }

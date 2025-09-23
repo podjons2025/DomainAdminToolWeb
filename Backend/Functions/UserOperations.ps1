@@ -57,37 +57,91 @@ function LoadUserList {
 
 function Get-UserList {
     param([System.Net.HttpListenerContext]$context)
-
     $response = $context.Response
+	$cookie = $context.Request.Cookies["SessionId"]
+	$sessionId = if ($cookie) { $cookie.Value } else { $null }
 
-    if (-not $script:domainContext) {
-        Send-JsonResponse $response 400 @{ success = $false; message = "请先连接到域" }
+    # 验证会话
+    if (-not $sessionId -or -not $script:sessions.ContainsKey($sessionId)) {
+        Send-JsonResponse $response 401 @{ success = $false; message = "会话已过期，请重新连接" }
         return
     }
+    $session = $script:sessions[$sessionId]
 
-    # 确保用户列表已加载
-    if ($script:allUsers.Count -eq 0) {
-        LoadUserList
+    # 获取分页参数（默认第一页，每页20条）
+    $query = [System.Web.HttpUtility]::ParseQueryString($context.Request.Url.Query)
+	# 处理 page 参数
+	if ([string]::IsNullOrEmpty($query["page"])) {
+		$page = 1
+	} else {
+		$page = [int]$query["page"]
+	}
+
+	# 处理 pageSize 参数
+	if ([string]::IsNullOrEmpty($query["pageSize"])) {
+		$pageSize = 20
+	} else {
+		$pageSize = [int]$query["pageSize"]
+	}
+	
+    try {
+        # 从远程会话获取用户列表
+        $allUsers = Invoke-Command -Session $session.remoteSession -ScriptBlock {
+            param($ou)
+            Import-Module ActiveDirectory -ErrorAction Stop
+            Get-ADUser -Filter * -SearchBase $ou -Properties DisplayName, EmailAddress, TelePhoneNumber, Description, Enabled, MemberOf |
+                Select-Object Name, SamAccountName, DisplayName, EmailAddress, TelePhoneNumber, Description, Enabled, 
+                    @{Name="MemberOf"; Expression={ ($_.MemberOf | ForEach-Object { ($_ -split ',' | Select-Object -First 1) -replace 'CN=' }) -join ';' }}
+        } -ArgumentList $session.currentOU -ErrorAction Stop
+
+        # 分页处理
+        $total = $allUsers.Count
+        $pagedUsers = $allUsers | Select-Object -Skip (($page - 1) * $pageSize) -First $pageSize
+
+        # 更新会话中的用户计数
+        $session.userCountStatus = $total
+        $script:sessions[$sessionId] = $session  # 保存会话状态
+
+        Send-JsonResponse $response 200 @{
+            success = $true
+            users = $pagedUsers
+            total = $total
+            page = $page
+            pageSize = $pageSize
+        }
     }
-
-    Send-JsonResponse $response 200 @{ 
-        success = $true 
-        users = $script:allUsers
-        count = $script:userCountStatus
+    catch {
+        $errorMsg = $_.Exception.Message
+        Send-JsonResponse $response 500 @{ 
+            success = $false 
+            message = "获取用户列表失败: $errorMsg"
+        }
     }
 }
+
+
+
 
 function Create-User {
     param([System.Net.HttpListenerContext]$context)
 
     $response = $context.Response
+	$cookie = $context.Request.Cookies["SessionId"]
+	$sessionId = if ($cookie) { $cookie.Value } else { $null }
     $requestData = Read-RequestData $context
 
-    if (-not $script:domainContext) {
-        Send-JsonResponse $response 400 @{ success = $false; message = "请先连接到域" }
+    if (-not $sessionId -or -not $script:sessions.ContainsKey($sessionId)) {
+        Send-JsonResponse $response 401 @{ success = $false; message = "会话已过期" }
         return
     }
-
+	 $session = $script:sessions[$sessionId]
+    if ($passwordErrors.Count -gt 0) {
+        Send-JsonResponse $response 400 @{ 
+            success = $false 
+            message = "密码不符合要求: $($passwordErrors -join '; ')"
+        }
+        return
+    }	 
     # 验证必填字段
     $requiredFields = @('cnName', 'username', 'password', 'confirmPassword')
     foreach ($field in $requiredFields) {
@@ -178,6 +232,9 @@ function Create-User {
         }
     }
 }
+
+
+
 
 function Toggle-UserEnabled {
     param([System.Net.HttpListenerContext]$context)

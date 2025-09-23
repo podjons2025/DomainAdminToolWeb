@@ -2,132 +2,128 @@
 域连接操作
 #>
 
-# 全局状态变量
-$script:domainContext = $null
-$script:remoteSession = $null
-$script:currentOU = $null
-$script:allUsersOU = $null
-$script:allUsers = New-Object System.Collections.ArrayList
-$script:allGroups = New-Object System.Collections.ArrayList
-$script:connectionStatus = "未连接到域"
-$script:userCountStatus = "0"
-$script:groupCountStatus = "0"
+# 初始化会话存储（替换全局变量）
+$script:sessions = @{}  # 键：SessionId（GUID），值：会话状态字典
 
 function Connect-ToDomain {
     param([System.Net.HttpListenerContext]$context)
-
     $response = $context.Response
     $requestData = Read-RequestData $context
 
-    if (-not $requestData -or -not $requestData.domain -or -not $requestData.adminUser -or -not $requestData.adminPassword) {
-        Send-JsonResponse $response 400 @{ success = $false; message = "请提供域地址、管理员账号和密码" }
+    # 验证输入参数
+    if (-not $requestData -or (-not $requestData.domain) -or (-not $requestData.username) -or (-not $requestData.password)) {
+        Send-JsonResponse $response 400 @{ success = $false; message = "请提供域、用户名和密码" }
         return
     }
 
     try {
-        $domain = $requestData.domain
-        $adminUser = $requestData.adminUser
-        $adminPassword = $requestData.adminPassword
-
-        # 创建安全密码
-        $securePassword = ConvertTo-SecureString $adminPassword -AsPlainText -Force
-        $credential = New-Object System.Management.Automation.PSCredential ($adminUser, $securePassword)
+        # 生成唯一会话ID
+        $sessionId = [guid]::NewGuid().ToString()
         
         # 创建远程会话
-        $script:remoteSession = New-PSSession -ComputerName $domain -Credential $credential -ErrorAction Stop
-        $script:connectionStatus = "正在验证远程服务器AD服务..."
+        $securePassword = ConvertTo-SecureString $requestData.password -AsPlainText -Force
+        $credential = New-Object System.Management.Automation.PSCredential ($requestData.username, $securePassword)
+        $remoteSession = New-PSSession -ComputerName $requestData.domain -Credential $credential -ErrorAction Stop
 
-        # 远程验证AD模块
-        $domainInfo = Invoke-Command -Session $script:remoteSession -ScriptBlock {
-            Import-Module ActiveDirectory -ErrorAction Stop
-            return Get-ADDomain -ErrorAction Stop
-        } -ErrorAction Stop
-        
-        $script:domainContext = @{
-            Server = $domain
-            Credential = $credential
-            DomainInfo = $domainInfo
+        # 获取域信息
+        $domainInfo = Invoke-Command -Session $remoteSession -ScriptBlock {
+            Get-ADDomain -ErrorAction Stop
         }
-        
-        # 设置默认OU
-        $script:currentOU = "CN=Users,$($domainInfo.DefaultPartition)"
-        
-        $script:connectionStatus = "已连接到域: $domain"
-        
-        # 加载用户和组列表
-        LoadUserList
-        LoadGroupList
 
+        # 存储会话状态
+        $script:sessions[$sessionId] = @{
+            domainContext = @{
+                Domain = $requestData.domain
+                Username = $requestData.username
+                DomainInfo = $domainInfo
+            }
+            remoteSession = $remoteSession
+            currentOU = "CN=Users,$($domainInfo.DefaultPartition)"  # 默认OU
+            allUsersOU = $null
+            userCountStatus = 0
+            groupCountStatus = 0
+            # 其他会话相关变量
+        }
+
+        # 设置会话Cookie
+        $cookie = New-Object System.Net.Cookie("SessionId", $sessionId)
+        $context.Response.Cookies.Add($cookie)
+
+        # 返回成功响应
         Send-JsonResponse $response 200 @{ 
             success = $true 
-            message = "连接成功"
-            domainInfo = @{
-                Name = $domainInfo.Name
-                DNSRoot = $domainInfo.DNSRoot
-                DefaultPartition = $domainInfo.DefaultPartition
-            }
-            currentOU = $script:currentOU
+            sessionId = $sessionId
+            message = "成功连接到域: $($requestData.domain)"
+            domainInfo = $domainInfo | Select-Object Name, DNSRoot, Forest
         }
     }
     catch {
         $errorMsg = $_.Exception.Message
-        if ($errorMsg -match "WinRM") { 
-            $errorMsg += "`n请确保远程服务器已启用WinRM服务，可以运行winrm quickconfig配置" 
-        }
-        elseif ($errorMsg -match "ActiveDirectory") { 
-            $errorMsg += "`n请确保远程服务器已安装AD模块" 
-        }
-        
-        $script:connectionStatus = "连接失败: $errorMsg"
-        $script:domainContext = $null
-        $script:remoteSession = $null
-        
         Send-JsonResponse $response 500 @{ 
             success = $false 
-            message = $errorMsg
+            message = "连接域失败: $errorMsg"
         }
     }
 }
 
 function Disconnect-FromDomain {
     param([System.Net.HttpListenerContext]$context)
-
     $response = $context.Response
+	$cookie = $context.Request.Cookies["SessionId"]
+	$sessionId = if ($cookie) { $cookie.Value } else { $null }
 
-    $script:domainContext = $null
-    $script:allUsers.Clear()
-    $script:allGroups.Clear()
-    $script:allOUs = $null
-    $script:currentOU = $null
-    
-    # 关闭远程会话
-    if ($script:remoteSession) {
-        Remove-PSSession $script:remoteSession
-        $script:remoteSession = $null
+    if (-not $sessionId -or -not $script:sessions.ContainsKey($sessionId)) {
+        Send-JsonResponse $response 401 @{ success = $false; message = "会话不存在或已过期" }
+        return
     }
 
-    $script:connectionStatus = "未连接到域"
-    $script:userCountStatus = "0"
-    $script:groupCountStatus = "0"
-
-    Send-JsonResponse $response 200 @{ 
-        success = $true 
-        message = "已成功断开连接"
+    try {
+        # 关闭远程会话
+        $session = $script:sessions[$sessionId]
+        if ($session.remoteSession) {
+            Remove-PSSession $session.remoteSession -ErrorAction Stop
+        }
+        # 删除会话
+        $script:sessions.Remove($sessionId)
+        # 清除Cookie
+        $context.Response.Cookies["SessionId"].Expires = [DateTime]::Now.AddDays(-1)
+        
+        Send-JsonResponse $response 200 @{ 
+            success = $true 
+            message = "已成功断开域连接"
+        }
+    }
+    catch {
+        $errorMsg = $_.Exception.Message
+        Send-JsonResponse $response 500 @{ 
+            success = $false 
+            message = "断开连接失败: $errorMsg"
+        }
     }
 }
 
 function Get-ConnectionStatus {
     param([System.Net.HttpListenerContext]$context)
-
     $response = $context.Response
-    
-    $isConnected = $null -ne $script:domainContext
-    
-    Send-JsonResponse $response 200 @{ 
-        isConnected = $isConnected
-        status = $script:connectionStatus
-        currentOU = $script:currentOU
-        userCount = $script:userCountStatus
-        groupCount = $script:groupCountStatus
+	$cookie = $context.Request.Cookies["SessionId"]
+	$sessionId = if ($cookie) { $cookie.Value } else { $null }
+
+    if ($sessionId -and $script:sessions.ContainsKey($sessionId)) {
+        $session = $script:sessions[$sessionId]
+        Send-JsonResponse $response 200 @{ 
+            success = $true 
+            connected = $true
+            domain = $session.domainContext.Domain
+            currentOU = $session.currentOU
+            userCount = $session.userCountStatus
+            groupCount = $session.groupCountStatus
+        }
+    }
+    else {
+        Send-JsonResponse $response 200 @{ 
+            success = $true 
+            connected = $false
+            message = "未连接到任何域"
+        }
     }
 }
