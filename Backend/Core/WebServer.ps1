@@ -251,49 +251,49 @@ function Handle-Request {
         # ==========================================
         # 连接相关路由
         if ($method -eq "GET" -and $path -eq "/api/connection-status") {
-            & $script:Get-ConnectionStatus $context
+            Get-ConnectionStatus -context $context
         }
         elseif ($method -eq "POST" -and $path -eq "/api/connect") {
-            & $script:Connect-ToDomain $context
+            Connect-ToDomain -context $context
         }
         elseif ($method -eq "POST" -and $path -eq "/api/disconnect") {
-            & $script:Disconnect-FromDomain $context
+            Disconnect-FromDomain -context $context
         }
         # OU管理路由
         elseif ($method -eq "GET" -and $path -eq "/api/ous") {
-            & $script:Get-OUList $context
+            Get-OUList -context $context
         }
         elseif ($method -eq "POST" -and $path -eq "/api/ous") {
-            & $script:Create-OU $context
+            Create-OU -context $context
         }
         elseif ($method -eq "POST" -and $path -eq "/api/switch-ou") {
-            & $script:Switch-OU $context
+            Switch-OU -context $context
         }
         # 用户管理路由
         elseif ($method -eq "GET" -and $path -eq "/api/users") {
-            & $script:Get-UserList $context
+            Get-UserList -context $context
         }
         elseif ($method -eq "POST" -and $path -eq "/api/users") {
-            & $script:Create-User $context
+            Create-User -context $context
         }
         elseif ($method -eq "PUT" -and $path -eq "/api/users/enable") {
-            & $script:Toggle-UserEnabled $context
+            Toggle-UserEnabled -context $context
         }
         elseif ($method -eq "GET" -and $path -like "/api/users/filter*") {
-            & $script:Filter-Users $context
+            Filter-Users -context $context
         }
         # 组管理路由
         elseif ($method -eq "GET" -and $path -eq "/api/groups") {
-            & $script:Get-GroupList $context
+            Get-GroupList -context $context
         }
         elseif ($method -eq "POST" -and $path -eq "/api/groups") {
-            & $script:Create-Group $context
+            Create-Group -context $context
         }
         elseif ($method -eq "POST" -and $path -eq "/api/groups/add-user") {
-            & $script:Add-UserToGroup $context
+            Add-UserToGroup -context $context
         }
         elseif ($method -eq "GET" -and $path -like "/api/groups/filter*") {
-            & $script:Filter-Groups $context
+            Filter-Groups -context $context
         }
         # 静态文件处理
         elseif ($method -eq "GET") {
