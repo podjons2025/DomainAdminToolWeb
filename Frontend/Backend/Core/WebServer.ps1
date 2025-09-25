@@ -1,6 +1,6 @@
 <# 
-PowerShell轻量级Web服务器核心（兼容PS 5.1，彻底解决函数未识别问题）
-基于HttpListener实现，放弃匿名脚本块，直接显式路由
+PowerShell轻量级Web服务器核心（兼容PS 5.1）
+基于HttpListener实现，显式路由处理
 #>
 
 Add-Type -AssemblyName System.Web
@@ -8,17 +8,26 @@ Add-Type -AssemblyName System.Web
 # 全局变量
 $script:httpListener = New-Object System.Net.HttpListener
 $script:frontendPath = $null
+$script:sessions = @{}  # 会话存储：键为SessionId（GUID），值为会话状态字典
 
 # ==============================================
-# 【关键修改1：提前导入所有业务模块（顶层script作用域）】
-# 直接在WebServer顶层导入，确保所有函数在script作用域可用
+# 导入业务模块（顶层script作用域）
 # ==============================================
 function Import-BusinessModules {
     [CmdletBinding()]
     param()
 
+    # 确定当前脚本所在目录的绝对路径
     $functionsDir = Join-Path -Path $PSScriptRoot -ChildPath "../Functions"
     $helpersDir = Join-Path -Path $PSScriptRoot -ChildPath "../Helpers"
+
+    # 转换为绝对路径，避免相对路径问题
+    $functionsDir = [System.IO.Path]::GetFullPath($functionsDir)
+    $helpersDir = [System.IO.Path]::GetFullPath($helpersDir)
+	
+    # 新增：打印解析后的路径
+    Write-Host "[调试] 解析的Functions路径: $($functionsDir)"
+    Write-Host "[调试] 解析的Helpers路径: $($helpersDir)"	
 
     # 验证目录存在
     if (-not (Test-Path $functionsDir -PathType Container)) {
@@ -31,6 +40,9 @@ function Import-BusinessModules {
     # 导入核心模块（显式script作用域）
     try {
         Write-Host "[模块] 开始导入业务模块..."
+        Write-Host "[模块] 函数目录: $functionsDir"
+        Write-Host "[模块] 帮助目录: $helpersDir"
+
         # 导入功能模块（强制script作用域）
         $script:null = . (Join-Path -Path $functionsDir -ChildPath "DomainOperations.ps1")
         $script:null = . (Join-Path -Path $functionsDir -ChildPath "UserOperations.ps1")
@@ -39,8 +51,6 @@ function Import-BusinessModules {
         $script:null = . (Join-Path -Path $helpersDir -ChildPath "Helpers.ps1")
         $script:null = . (Join-Path -Path $helpersDir -ChildPath "PinyinConverter.ps1")
         $script:null = . (Join-Path -Path $helpersDir -ChildPath "importExportUsers.ps1")
-
-        Write-Host "[路由] 业务模块导入成功（目录：$functionsDir）"
 
         # 验证核心函数是否存在（必须通过，否则服务器无法启动）
         $requiredFuncs = @(
@@ -62,7 +72,7 @@ function Import-BusinessModules {
             throw "以下核心函数缺失（检查对应.ps1文件）: $($missingFuncs -join ', ')"
         }
 
-        Write-Host "[模块] 14个核心业务函数全部导入成功（script作用域）"
+        Write-Host "[模块] 所有核心业务函数导入成功（script作用域）"
     }
     catch {
         Write-Error "[模块] 导入失败: $_"
@@ -71,8 +81,7 @@ function Import-BusinessModules {
 }
 
 # ==============================================
-# 【迁移：从Router.ps1复制Read-RequestData到此处】
-# 避免依赖Router.ps1，直接在WebServer中定义
+# 读取请求数据
 # ==============================================
 function script:Read-RequestData {
     param([System.Net.HttpListenerContext]$context)
@@ -94,26 +103,28 @@ function script:Read-RequestData {
 }
 
 # ==============================================
-# 前端目录解析（保留）
+# 前端目录解析
 # ==============================================
 function Resolve-FrontendPath {
     [CmdletBinding()]
     param()
     
     $rawPath = Join-Path -Path $PSScriptRoot -ChildPath "../../Frontend"
-    try {
-        $resolvedPath = Convert-Path -Path $rawPath -ErrorAction Stop
+    $resolvedPath = [System.IO.Path]::GetFullPath($rawPath)
+	
+    
+    if (Test-Path $resolvedPath -PathType Container) {
         Write-Host "[信息] 前端目录解析成功: $resolvedPath"
         return $resolvedPath
     }
-    catch {
-        Write-Warning "[警告] 前端目录转换失败，使用原始路径: $rawPath"
-        return $rawPath
+    else {
+        Write-Warning "[警告] 前端目录不存在，使用原始路径: $resolvedPath"
+        return $resolvedPath
     }
 }
 
 # ==============================================
-# URL权限配置（保留）
+# URL权限配置
 # ==============================================
 function Configure-UrlAcl {
     [CmdletBinding()]
@@ -142,7 +153,7 @@ function Configure-UrlAcl {
 }
 
 # ==============================================
-# 启动服务器（保留，移除Router.ps1依赖）
+# 启动服务器
 # ==============================================
 function Start-WebServer {
     [CmdletBinding()]
@@ -189,7 +200,7 @@ function Start-WebServer {
             Write-Host "按Ctrl+C停止服务器"
             Write-Host "=====================================`n"
 
-            # 5. 处理请求（核心：直接显式判断路由）
+            # 5. 处理请求
             while ($script:httpListener.IsListening) {
                 try {
                     $context = $script:httpListener.GetContext()
@@ -216,7 +227,7 @@ function Start-WebServer {
 }
 
 # ==============================================
-# 停止服务器（保留）
+# 停止服务器
 # ==============================================
 function Stop-WebServer {
     if ($script:httpListener.IsListening) {
@@ -227,10 +238,8 @@ function Stop-WebServer {
 }
 
 # ==============================================
-# 【核心修改2：显式路由判断（彻底解决作用域问题）】
-# 不再用路由哈希表，直接if-else判断方法+路径
+# 请求处理与路由
 # ==============================================
-# 替换原文件中Handle-Request函数内的路由处理部分（大约在251-286行）
 function Handle-Request {
     [CmdletBinding()]
     param(
@@ -246,54 +255,52 @@ function Handle-Request {
     Write-Host "[请求] $method $path"
 
     try {
-        # ==========================================
-        # 路由匹配（正确调用script作用域中的函数）
-        # ==========================================
+        # 路由匹配（调用script作用域中的函数）
         # 连接相关路由
         if ($method -eq "GET" -and $path -eq "/api/connection-status") {
-            Get-ConnectionStatus -context $context
+            script:Get-ConnectionStatus -context $context
         }
         elseif ($method -eq "POST" -and $path -eq "/api/connect") {
-            Connect-ToDomain -context $context
+            script:Connect-ToDomain -context $context
         }
         elseif ($method -eq "POST" -and $path -eq "/api/disconnect") {
-            Disconnect-FromDomain -context $context
+            script:Disconnect-FromDomain -context $context
         }
         # OU管理路由
         elseif ($method -eq "GET" -and $path -eq "/api/ous") {
-            Get-OUList -context $context
+            script:Get-OUList -context $context
         }
         elseif ($method -eq "POST" -and $path -eq "/api/ous") {
-            Create-OU -context $context
+            script:Create-OU -context $context
         }
         elseif ($method -eq "POST" -and $path -eq "/api/switch-ou") {
-            Switch-OU -context $context
+            script:Switch-OU -context $context
         }
         # 用户管理路由
         elseif ($method -eq "GET" -and $path -eq "/api/users") {
-            Get-UserList -context $context
+            script:Get-UserList -context $context
         }
         elseif ($method -eq "POST" -and $path -eq "/api/users") {
-            Create-User -context $context
+            script:Create-User -context $context
         }
         elseif ($method -eq "PUT" -and $path -eq "/api/users/enable") {
-            Toggle-UserEnabled -context $context
+            script:Toggle-UserEnabled -context $context
         }
         elseif ($method -eq "GET" -and $path -like "/api/users/filter*") {
-            Filter-Users -context $context
+            script:Filter-Users -context $context
         }
         # 组管理路由
         elseif ($method -eq "GET" -and $path -eq "/api/groups") {
-            Get-GroupList -context $context
+            script:Get-GroupList -context $context
         }
         elseif ($method -eq "POST" -and $path -eq "/api/groups") {
-            Create-Group -context $context
+            script:Create-Group -context $context
         }
         elseif ($method -eq "POST" -and $path -eq "/api/groups/add-user") {
-            Add-UserToGroup -context $context
+            script:Add-UserToGroup -context $context
         }
         elseif ($method -eq "GET" -and $path -like "/api/groups/filter*") {
-            Filter-Groups -context $context
+            script:Filter-Groups -context $context
         }
         # 静态文件处理
         elseif ($method -eq "GET") {
@@ -308,17 +315,13 @@ function Handle-Request {
         Send-Response -response $response -statusCode 500 -content "服务器内部错误: $($_.Exception.Message)"
     }
     finally {
-		$response.OutputStream.Flush()
+        $response.OutputStream.Flush()
         $response.Close()
     }
 }
 
-
-
-
-
 # ==============================================
-# 以下函数保留不变（仅确保Send-JsonResponse在script作用域）
+# 静态文件服务
 # ==============================================
 function Serve-StaticFile {
     [CmdletBinding()]
@@ -359,6 +362,9 @@ function Serve-StaticFile {
     }
 }
 
+# ==============================================
+# 获取内容类型
+# ==============================================
 function Get-ContentType {
     [CmdletBinding()]
     param([string]$filePath)
@@ -376,6 +382,9 @@ function Get-ContentType {
     }
 }
 
+# ==============================================
+# 发送响应
+# ==============================================
 function Send-Response {
     [CmdletBinding()]
     param(
@@ -400,7 +409,9 @@ function Send-Response {
     }
 }
 
-# 【关键修改3：Send-JsonResponse强制script作用域】
+# ==============================================
+# 发送JSON响应
+# ==============================================
 function script:Send-JsonResponse {
     [CmdletBinding()]
     param(
@@ -414,9 +425,15 @@ function script:Send-JsonResponse {
     Send-Response -response $response -statusCode $statusCode -content $json -contentType "application/json; charset=utf-8"
 }
 
-# 终止处理（保留）
+# ==============================================
+# 终止处理
+# ==============================================
 $exitHandler = {
     Stop-WebServer
     exit 0
 }
 Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action $exitHandler | Out-Null
+
+<# 
+注意：请不要随意修改此文件，可能导致功能异常
+#>

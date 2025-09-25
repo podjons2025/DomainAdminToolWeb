@@ -2,10 +2,8 @@
 域连接操作
 #>
 
-# 初始化会话存储（替换全局变量）
-$script:sessions = @{}  # 键：SessionId（GUID），值：会话状态字典
-
-function Connect-ToDomain {
+# 域连接函数
+function script:Connect-ToDomain {
     param([System.Net.HttpListenerContext]$context)
     $response = $context.Response
     $requestData = Read-RequestData $context
@@ -66,11 +64,12 @@ function Connect-ToDomain {
     }
 }
 
-function Disconnect-FromDomain {
+# 断开域连接函数
+function script:Disconnect-FromDomain {
     param([System.Net.HttpListenerContext]$context)
     $response = $context.Response
-	$cookie = $context.Request.Cookies["SessionId"]
-	$sessionId = if ($cookie) { $cookie.Value } else { $null }
+    $cookie = $context.Request.Cookies["SessionId"]
+    $sessionId = if ($cookie) { $cookie.Value } else { $null }
 
     if (-not $sessionId -or -not $script:sessions.ContainsKey($sessionId)) {
         Send-JsonResponse $response 401 @{ success = $false; message = "会话不存在或已过期" }
@@ -102,11 +101,12 @@ function Disconnect-FromDomain {
     }
 }
 
-function Get-ConnectionStatus {
+# 获取连接状态函数
+function script:Get-ConnectionStatus {
     param([System.Net.HttpListenerContext]$context)
     $response = $context.Response
-	$cookie = $context.Request.Cookies["SessionId"]
-	$sessionId = if ($cookie) { $cookie.Value } else { $null }
+    $cookie = $context.Request.Cookies["SessionId"]
+    $sessionId = if ($cookie) { $cookie.Value } else { $null }
 
     if ($sessionId -and $script:sessions.ContainsKey($sessionId)) {
         $session = $script:sessions[$sessionId]

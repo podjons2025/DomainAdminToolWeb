@@ -5,7 +5,7 @@
 # 检查是否以管理员身份运行
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Host "请以管理员身份运行此脚本，以确保Web服务器正常工作" -ForegroundColor Red
+    Write-Host "需要管理员权限才能正确运行此脚本，正在重启..." -ForegroundColor Red
     Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$($MyInvocation.MyCommand.Path)`"" -Verb RunAs
     exit
 }
@@ -21,6 +21,6 @@ try {
     Start-WebServer -Prefix "http://localhost:8080/"
 }
 catch {
-    Write-Host "服务器启动失败: $_" -ForegroundColor Red
+    Write-Host "启动失败: $_" -ForegroundColor Red
     Read-Host "按任意键退出..."
 }
