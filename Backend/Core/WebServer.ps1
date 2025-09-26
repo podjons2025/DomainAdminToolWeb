@@ -9,6 +9,7 @@ Add-Type -AssemblyName System.Web
 $script:httpListener = New-Object System.Net.HttpListener
 $script:frontendPath = $null
 $script:sessions = @{}  # 会话存储：键为SessionId（GUID），值为会话状态字典
+$script:routes = @{}
 
 # ==============================================
 # 导入业务模块（顶层script作用域）
@@ -251,22 +252,52 @@ function Handle-Request {
     $response = $context.Response
     $path = $request.Url.LocalPath
     $method = $request.HttpMethod
+    $sessionId = $null
+    
+    # 获取会话ID
+    $cookie = $context.Request.Cookies["SessionId"]
+    if ($cookie) {
+        $sessionId = $cookie.Value
+    }
 
-    Write-Host "[请求] $method $path"
+    Write-Host "[请求] $method $path (会话: $sessionId)"
 
     try {
-        # 路由匹配（调用script作用域中的函数）
-        # 连接相关路由
+        # 特殊处理断开连接请求，允许即使会话看似无效也执行
+        if ($method -eq "POST" -and $path -eq "/api/disconnect") {
+            script:Disconnect-FromDomain -context $context -sessionId $sessionId
+            return
+        }
+
+        # 检查会话是否有效（对于需要连接的API）
+        $requiresConnection = $path -like "/api/*" -and 
+                             $path -ne "/api/connection-status" -and 
+                             $path -ne "/api/connect"
+        
+        # 验证会话状态
+        $isConnected = $false
+        if (-not [string]::IsNullOrEmpty($sessionId) -and $script:sessions.ContainsKey($sessionId)) {
+            $session = $script:sessions[$sessionId]
+            $isConnected = $session.connected  # 明确检查连接状态标记
+        }
+
+        # 状态检查与提示
+        if ($requiresConnection -and -not $isConnected) {
+            Send-JsonResponse $response 401 @{ 
+                success = $false 
+                connected = $false
+                message = "请先连接到域" 
+            }
+            return
+        }
+
+        # 路由匹配（保持不变）
         if ($method -eq "GET" -and $path -eq "/api/connection-status") {
             script:Get-ConnectionStatus -context $context
         }
         elseif ($method -eq "POST" -and $path -eq "/api/connect") {
             script:Connect-ToDomain -context $context
         }
-        elseif ($method -eq "POST" -and $path -eq "/api/disconnect") {
-            script:Disconnect-FromDomain -context $context
-        }
-        # OU管理路由
         elseif ($method -eq "GET" -and $path -eq "/api/ous") {
             script:Get-OUList -context $context
         }
@@ -276,7 +307,6 @@ function Handle-Request {
         elseif ($method -eq "POST" -and $path -eq "/api/switch-ou") {
             script:Switch-OU -context $context
         }
-        # 用户管理路由
         elseif ($method -eq "GET" -and $path -eq "/api/users") {
             script:Get-UserList -context $context
         }
@@ -289,7 +319,6 @@ function Handle-Request {
         elseif ($method -eq "GET" -and $path -like "/api/users/filter*") {
             script:Filter-Users -context $context
         }
-        # 组管理路由
         elseif ($method -eq "GET" -and $path -eq "/api/groups") {
             script:Get-GroupList -context $context
         }
@@ -302,7 +331,6 @@ function Handle-Request {
         elseif ($method -eq "GET" -and $path -like "/api/groups/filter*") {
             script:Filter-Groups -context $context
         }
-        # 静态文件处理
         elseif ($method -eq "GET") {
             Serve-StaticFile -context $context
         }
@@ -319,6 +347,8 @@ function Handle-Request {
         $response.Close()
     }
 }
+
+
 
 # ==============================================
 # 静态文件服务
@@ -434,6 +464,3 @@ $exitHandler = {
 }
 Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action $exitHandler | Out-Null
 
-<# 
-注意：请不要随意修改此文件，可能导致功能异常
-#>

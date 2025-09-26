@@ -1,8 +1,10 @@
 <# 
-用户操作函数
+用户操作函数 - 修复版
 #>
 
-function LoadUserList {
+# 注意：所有函数都添加了 script: 前缀，确保在脚本作用域中定义
+
+function script:LoadUserList {
     if (-not $script:domainContext) {
         return
     }
@@ -55,7 +57,7 @@ function LoadUserList {
     }
 }
 
-function Get-UserList {
+function script:Get-UserList {
     param([System.Net.HttpListenerContext]$context)
     $response = $context.Response
 	$cookie = $context.Request.Cookies["SessionId"]
@@ -119,10 +121,7 @@ function Get-UserList {
     }
 }
 
-
-
-
-function Create-User {
+function script:Create-User {
     param([System.Net.HttpListenerContext]$context)
 
     $response = $context.Response
@@ -233,10 +232,7 @@ function Create-User {
     }
 }
 
-
-
-
-function Toggle-UserEnabled {
+function script:Toggle-UserEnabled {
     param([System.Net.HttpListenerContext]$context)
 
     $response = $context.Response
@@ -292,7 +288,7 @@ function Toggle-UserEnabled {
     }
 }
 
-function Filter-Users {
+function script:Filter-Users {
     param([System.Net.HttpListenerContext]$context)
 
     $response = $context.Response

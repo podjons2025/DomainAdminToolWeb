@@ -1,8 +1,10 @@
 <# 
-组操作函数
+组操作函数 - 修复版
 #>
 
-function LoadGroupList {
+# 注意：所有函数都添加了 script: 前缀，确保在脚本作用域中定义
+
+function script:LoadGroupList {
     if (-not $script:domainContext) {
         return
     }
@@ -41,7 +43,7 @@ function LoadGroupList {
     }
 }
 
-function Get-GroupList {
+function script:Get-GroupList {
     param([System.Net.HttpListenerContext]$context)
 
     $response = $context.Response
@@ -63,7 +65,7 @@ function Get-GroupList {
     }
 }
 
-function Create-Group {
+function script:Create-Group {
     param([System.Net.HttpListenerContext]$context)
 
     $response = $context.Response
@@ -137,7 +139,7 @@ function Create-Group {
     }
 }
 
-function Add-UserToGroup {
+function script:Add-UserToGroup {
     param([System.Net.HttpListenerContext]$context)
 
     $response = $context.Response
@@ -198,7 +200,7 @@ function Add-UserToGroup {
     }
 }
 
-function Filter-Groups {
+function script:Filter-Groups {
     param([System.Net.HttpListenerContext]$context)
 
     $response = $context.Response
