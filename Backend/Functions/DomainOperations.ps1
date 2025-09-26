@@ -1,5 +1,5 @@
 <# 
-域连接操作 - 修复版
+域连接操作
 #>
 
 # 域连接函数
@@ -7,57 +7,143 @@ function script:Connect-ToDomain {
     param([System.Net.HttpListenerContext]$context)
     $response = $context.Response
     $requestData = Read-RequestData $context
+    $sessionId = [Guid]::NewGuid().ToString()
+    $remoteSession = $null
 
     # 验证输入参数
-    if (-not $requestData -or (-not $requestData.domain) -or (-not $requestData.username) -or (-not $requestData.password)) {
-        Send-JsonResponse $response 400 @{ success = $false; message = "请提供域、用户名和密码" }
+    if (-not $requestData -or [string]::IsNullOrEmpty($requestData.domain) -or 
+        [string]::IsNullOrEmpty($requestData.username) -or 
+        [string]::IsNullOrEmpty($requestData.password)) {
+        Send-JsonResponse $response 400 @{ 
+            success = $false; 
+            message = "请提供域、用户名和密码" 
+        }
         return
     }
 
     try {
-        # 生成唯一会话ID
-        $sessionId = [guid]::NewGuid().ToString()
-        
-        # 创建远程会话
-        $securePassword = ConvertTo-SecureString $requestData.password -AsPlainText -Force
-        $credential = New-Object System.Management.Automation.PSCredential ($requestData.username, $securePassword)
-        $remoteSession = New-PSSession -ComputerName $requestData.domain -Credential $credential -ErrorAction Stop
+        # 创建域凭据
+        $securePassword = ConvertTo-SecureString -String $requestData.password -AsPlainText -Force
+        $credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $requestData.username, $securePassword
 
-        # 获取域信息
-        $domainInfo = Invoke-Command -Session $remoteSession -ScriptBlock {
-            Get-ADDomain -ErrorAction Stop
+        # 建立远程会话
+        $remoteSession = New-PSSession -ComputerName $requestData.domain -Credential $credential -ErrorAction Stop
+        Write-Host "[调试] 远程会话创建成功，ID: $($remoteSession.Id)"
+
+        # 关键修复：多途径获取域分区信息
+        $domainPartition = $null
+        $domainInfo = $null
+
+        # 方法1：尝试通过Get-ADDomain获取（优先方法）
+        try {
+            $domainInfo = Invoke-Command -Session $remoteSession -ScriptBlock { 
+                Import-Module ActiveDirectory -ErrorAction Stop
+                $domain = Get-ADDomain -ErrorAction Stop
+                Write-Host "[远程调试] Get-ADDomain返回的DefaultPartition: $($domain.DefaultPartition)"
+                return $domain
+            } -ErrorAction Stop
+
+            if (-not [string]::IsNullOrEmpty($domainInfo.DefaultPartition)) {
+                $domainPartition = $domainInfo.DefaultPartition
+                Write-Host "[调试] 通过Get-ADDomain获取到分区: $domainPartition"
+            }
+        }
+        catch {
+            Write-Warning "[调试] 方法1获取域信息失败: $($_.Exception.Message)，尝试备选方法..."
         }
 
-        # 存储会话状态
+        # 方法2：若方法1失败，通过Get-ADRootDSE获取（备选方案，更可靠）
+        if ([string]::IsNullOrEmpty($domainPartition)) {
+            try {
+                $rootDSE = Invoke-Command -Session $remoteSession -ScriptBlock { 
+                    Import-Module ActiveDirectory -ErrorAction Stop
+                    $dse = Get-ADRootDSE -ErrorAction Stop
+                    Write-Host "[远程调试] Get-ADRootDSE返回的defaultNamingContext: $($dse.defaultNamingContext)"
+                    return $dse
+                } -ErrorAction Stop
+
+                if (-not [string]::IsNullOrEmpty($rootDSE.defaultNamingContext)) {
+                    $domainPartition = $rootDSE.defaultNamingContext
+                    Write-Host "[调试] 通过Get-ADRootDSE获取到分区: $domainPartition"
+                }
+            }
+            catch {
+                Write-Warning "[调试] 方法2获取域信息失败: $($_.Exception.Message)"
+            }
+        }
+
+        # 方法3：若前两种都失败，尝试通过域名解析构造（最后备选）
+        if ([string]::IsNullOrEmpty($domainPartition)) {
+            $domainParts = $requestData.domain -split '\.'
+            if ($domainParts.Count -ge 2) {
+                $domainPartition = "DC=" + ($domainParts -join ",DC=")
+                Write-Host "[调试] 通过域名解析构造分区: $domainPartition（可能不准确，建议检查权限）"
+            }
+        }
+
+        # 最终验证分区信息
+        if ([string]::IsNullOrEmpty($domainPartition)) {
+            throw "所有方法均无法获取域分区信息，请检查：1.AD模块权限 2.域控制器配置 3.用户名是否为域管理员"
+        }
+
+        # 验证默认OU路径（使用获取到的分区信息）
+        $defaultOU = "CN=Users,$domainPartition"
+        Write-Host "[调试] 最终验证的OU路径: $defaultOU"
+        
+        $ouExists = Invoke-Command -Session $remoteSession -ScriptBlock {
+            param($ouPath)
+            Import-Module ActiveDirectory -ErrorAction Stop
+            # 同时检查OU和容器
+            $ou = Get-ADOrganizationalUnit -Filter "DistinguishedName -eq '$ouPath'" -ErrorAction SilentlyContinue
+            $container = Get-ADObject -Filter "DistinguishedName -eq '$ouPath'" -ErrorAction SilentlyContinue
+            return $null -ne $ou -or $null -ne $container
+        } -ArgumentList $defaultOU -ErrorAction Stop
+
+        if (-not $ouExists) {
+            throw "默认OU/容器路径无效或无权限访问：$defaultOU，请手动检查AD中是否存在该路径"
+        }
+
+        # 存储会话信息（若方法1未获取到domainInfo，用分区信息补充）
+        if (-not $domainInfo) {
+            $domainInfo = [PSCustomObject]@{
+                DefaultPartition = $domainPartition
+                DNSRoot = $requestData.domain
+                Name = $requestData.domain.Split('.')[0]
+            }
+        }
+
         $script:sessions[$sessionId] = @{
             domainContext = @{
-                Domain = $requestData.domain
-                Username = $requestData.username
+                Domain     = $requestData.domain
+                Username   = $requestData.username
                 DomainInfo = $domainInfo
-                IsConnected = $true  # 明确标记为已连接
+                IsConnected = $true
             }
             remoteSession = $remoteSession
-            currentOU = "CN=Users,$($domainInfo.DefaultPartition)"  # 默认OU
-            allUsersOU = $null
+            currentOU     = $defaultOU
+            allUsersOU    = $null
             userCountStatus = 0
             groupCountStatus = 0
         }
 
-        # 设置会话Cookie，延长有效期
+        # 设置会话Cookie
         $cookie = New-Object System.Net.Cookie("SessionId", $sessionId)
-        $cookie.Expires = [DateTime]::Now.AddHours(1)  # 会话有效期1小时
+        $cookie.Expires = [DateTime]::Now.AddHours(1)
         $context.Response.Cookies.Add($cookie)
 
         # 返回成功响应
         Send-JsonResponse $response 200 @{ 
             success = $true 
             sessionId = $sessionId
-            connected = $true  # 明确返回连接状态
+            connected = $true
             message = "成功连接到域: $($requestData.domain)"
             domainInfo = $domainInfo | Select-Object Name, DNSRoot, Forest
         }
     }
     catch {
+        if ($remoteSession) {
+            Remove-PSSession -Session $remoteSession -ErrorAction SilentlyContinue
+        }
         $errorMsg = $_.Exception.Message
         Send-JsonResponse $response 500 @{ 
             success = $false 
@@ -66,6 +152,8 @@ function script:Connect-ToDomain {
         }
     }
 }
+
+
 
 # 断开域连接函数
 function script:Disconnect-FromDomain {

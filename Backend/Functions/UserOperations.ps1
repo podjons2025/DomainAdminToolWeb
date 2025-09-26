@@ -1,5 +1,5 @@
 <# 
-用户操作函数 - 修复版
+用户操作函数
 #>
 
 # 注意：所有函数都添加了 script: 前缀，确保在脚本作用域中定义
@@ -58,68 +58,155 @@ function script:LoadUserList {
 }
 
 function script:Get-UserList {
-    param([System.Net.HttpListenerContext]$context)
+    param(
+        [Parameter(Mandatory=$true)]
+        [System.Net.HttpListenerContext]$context
+    )
+
     $response = $context.Response
-	$cookie = $context.Request.Cookies["SessionId"]
-	$sessionId = if ($cookie) { $cookie.Value } else { $null }
+    $sessionId = $null
+    $session = $null
 
-    # 验证会话
-    if (-not $sessionId -or -not $script:sessions.ContainsKey($sessionId)) {
-        Send-JsonResponse $response 401 @{ success = $false; message = "会话已过期，请重新连接" }
-        return
-    }
-    $session = $script:sessions[$sessionId]
-
-    # 获取分页参数（默认第一页，每页20条）
-    $query = [System.Web.HttpUtility]::ParseQueryString($context.Request.Url.Query)
-	# 处理 page 参数
-	if ([string]::IsNullOrEmpty($query["page"])) {
-		$page = 1
-	} else {
-		$page = [int]$query["page"]
-	}
-
-	# 处理 pageSize 参数
-	if ([string]::IsNullOrEmpty($query["pageSize"])) {
-		$pageSize = 20
-	} else {
-		$pageSize = [int]$query["pageSize"]
-	}
-	
     try {
-        # 从远程会话获取用户列表
-        $allUsers = Invoke-Command -Session $session.remoteSession -ScriptBlock {
-            param($ou)
+        # 1. 获取并验证会话ID
+        $cookie = $context.Request.Cookies["SessionId"]
+        if (-not $cookie -or [string]::IsNullOrEmpty($cookie.Value)) {
+            Send-JsonResponse $response 401 @{
+                success = $false
+                connected = $false
+                message = "未检测到会话，请重新连接到域"
+            }
+            return
+        }
+        $sessionId = $cookie.Value
+
+        # 2. 验证会话存在性
+        if (-not $script:sessions.ContainsKey($sessionId)) {
+            Send-JsonResponse $response 401 @{
+                success = $false
+                connected = $false
+                message = "会话已过期或无效，请重新连接"
+            }
+            return
+        }
+        $session = $script:sessions[$sessionId]
+
+        # 3. 验证域连接状态
+        if (-not $session.domainContext.IsConnected -or -not $session.remoteSession) {
+            Send-JsonResponse $response 400 @{
+                success = $false
+                connected = $false
+                message = "请先连接到域"
+            }
+            return
+        }
+
+        # 4. 解析分页参数（兼容PS 5.1的查询字符串处理）
+        $query = [System.Web.HttpUtility]::ParseQueryString($context.Request.Url.Query)
+        $page = if (-not [string]::IsNullOrEmpty($query["page"])) { [int]$query["page"] } else { 1 }
+        $pageSize = if (-not [string]::IsNullOrEmpty($query["pageSize"])) { [int]$query["pageSize"] } else { 20 }
+
+        # 验证分页参数有效性
+        if ($page -lt 1) { $page = 1 }
+        if ($pageSize -lt 1 -or $pageSize -gt 100) { $pageSize = 20 }
+
+        # 5. 从会话获取必要信息
+        $remoteSession = $session.remoteSession
+        $currentOU = $session.currentOU
+        $domainInfo = $session.domainContext.DomainInfo
+
+        # 6. 验证OU路径有效性（解决"分区错误"问题）
+        $ouValidation = Invoke-Command -Session $remoteSession -ScriptBlock {
+            param($ouPath)
             Import-Module ActiveDirectory -ErrorAction Stop
-            Get-ADUser -Filter * -SearchBase $ou -Properties DisplayName, EmailAddress, TelePhoneNumber, Description, Enabled, MemberOf |
-                Select-Object Name, SamAccountName, DisplayName, EmailAddress, TelePhoneNumber, Description, Enabled, 
-                    @{Name="MemberOf"; Expression={ ($_.MemberOf | ForEach-Object { ($_ -split ',' | Select-Object -First 1) -replace 'CN=' }) -join ';' }}
-        } -ArgumentList $session.currentOU -ErrorAction Stop
+            
+            # 检查OU是否存在
+            $ou = Get-ADOrganizationalUnit -Filter "DistinguishedName -eq '$ouPath'" -ErrorAction SilentlyContinue
+            if ($ou) { return $true }
+            
+            # 检查是否为特殊容器（如CN=Users）
+            $container = Get-ADObject -Filter "DistinguishedName -eq '$ouPath'" -ErrorAction SilentlyContinue
+            return $null -ne $container
+        } -ArgumentList $currentOU -ErrorAction Stop
 
-        # 分页处理
-        $total = $allUsers.Count
-        $pagedUsers = $allUsers | Select-Object -Skip (($page - 1) * $pageSize) -First $pageSize
+        if (-not $ouValidation) {
+            Send-JsonResponse $response 400 @{
+                success = $false
+                message = "当前OU路径无效或无访问权限: $currentOU"
+            }
+            return
+        }
 
-        # 更新会话中的用户计数
-        $session.userCountStatus = $total
-        $script:sessions[$sessionId] = $session  # 保存会话状态
+        # 7. 远程查询AD用户（PowerShell 5.1兼容语法）
+        $allUsers = Invoke-Command -Session $remoteSession -ScriptBlock {
+            param($searchBase, $domainDNS)
+            Import-Module ActiveDirectory -ErrorAction Stop
+            
+            # 执行AD查询（包含必要属性）
+            $users = Get-ADUser -Filter * -SearchBase $searchBase `
+                -Properties DisplayName, EmailAddress, TelephoneNumber, 
+                            Description, Enabled, MemberOf, SamAccountName `
+                -ErrorAction Stop
 
+            # 处理用户数据（转换组信息为友好名称）
+            $users | ForEach-Object {
+                $groupNames = @()
+                if ($_.MemberOf) {
+                    $groupNames = $_.MemberOf | ForEach-Object {
+                        if ($_ -match 'CN=([^,]+)') { $matches[1] }
+                    }
+                }
+
+                # 返回PS 5.1兼容的自定义对象
+                [PSCustomObject]@{
+                    DisplayName      = $_.DisplayName
+                    SamAccountName   = $_.SamAccountName
+                    EmailAddress     = $_.EmailAddress
+                    TelephoneNumber  = $_.TelephoneNumber
+                    Description      = $_.Description
+                    Enabled          = [bool]$_.Enabled
+                    MemberOf         = $groupNames -join '; '
+                }
+            }
+        } -ArgumentList $currentOU, $domainInfo.DNSRoot -ErrorAction Stop
+
+        # 8. 执行分页处理
+        $totalUsers = $allUsers.Count
+        $skipCount = ($page - 1) * $pageSize
+        $pagedUsers = $allUsers | Select-Object -Skip $skipCount -First $pageSize
+
+        # 9. 更新会话中的用户计数
+        $session.userCountStatus = $totalUsers
+        $script:sessions[$sessionId] = $session
+
+        # 10. 返回成功响应
         Send-JsonResponse $response 200 @{
             success = $true
+            connected = $true
             users = $pagedUsers
-            total = $total
+            total = $totalUsers
             page = $page
             pageSize = $pageSize
+            currentOU = $currentOU
         }
     }
     catch {
         $errorMsg = $_.Exception.Message
-        Send-JsonResponse $response 500 @{ 
-            success = $false 
+        Write-Error "[Get-UserList 错误] $errorMsg"
+        
+        # 根据会话状态返回适当的连接状态
+        $isConnected = if ($session) { $session.domainContext.IsConnected } else { $false }
+        
+        Send-JsonResponse $response 500 @{
+            success = $false
+            connected = $isConnected
             message = "获取用户列表失败: $errorMsg"
         }
     }
 }
+
+
+
 
 function script:Create-User {
     param([System.Net.HttpListenerContext]$context)

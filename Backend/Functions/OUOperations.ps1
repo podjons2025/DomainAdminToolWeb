@@ -117,35 +117,26 @@ function Create-OU {
     }
 }
 
-function Switch-OU {
+function script:Switch-OU {
     param([System.Net.HttpListenerContext]$context)
 
     $response = $context.Response
     $requestData = Read-RequestData $context
-
-    if (-not $script:domainContext) {
-        Send-JsonResponse $response 400 @{ success = $false; message = "请先连接到域" }
-        return
-    }
-
-    if (-not $requestData -or [string]::IsNullOrEmpty($requestData.ouDn)) {
-        Send-JsonResponse $response 400 @{ success = $false; message = "请提供OU的DistinguishedName" }
-        return
-    }
+    $sessionId = $context.Request.Cookies["SessionId"].Value
 
     try {
         $selectedOU = $requestData.ouDn
-        $script:currentOU = $selectedOU
+        $script:sessions[$sessionId].currentOU = $selectedOU  # 更新会话OU
 
         # 检查是否选择了"全部Users"
-        $domainDN = $script:domainContext.DomainInfo.DefaultPartition
+        $domainDN = $script:sessions[$sessionId].domainContext.DomainInfo.DefaultPartition
         $allUsersOUDN = "CN=Users,$domainDN"
         
         if ($requestData.ouName -eq "全部Users") {
-            $script:allUsersOU = $allUsersOUDN
+            $script:sessions[$sessionId].allUsersOU = $allUsersOUDN
         }
         else {
-            $script:allUsersOU = $null
+            $script:sessions[$sessionId].allUsersOU = $null
         }
 
         # 重新加载用户和组
@@ -168,6 +159,7 @@ function Switch-OU {
         }
     }
 }
+
 
 # 内部函数：获取OU列表
 function Get-OUListInternal {

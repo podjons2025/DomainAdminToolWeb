@@ -231,41 +231,36 @@ document.addEventListener('DOMContentLoaded', function() {
     const addUsersToGroupBtn = document.getElementById('add-users-to-group-btn');
     
     // 检查连接状态
-    async function checkConnectionStatus() {
-        try {
-            const data = await apiRequest('/api/connection-status');
-            isConnected = data.connected;
-            connectionStatus.textContent = data.connected ? `已连接到: ${data.domain}` : '未连接到域';
-            userCountElem.textContent = `用户数: ${data.userCount || 0}`;
-            groupCountElem.textContent = `组数: ${data.groupCount || 0}`;
-            
-            if (data.currentOU) {
-                currentOuDisplay.textContent = data.currentOU;
-            }
-            
-            // 更新UI状态
-            if (isConnected) {
-                connectBtn.disabled = true;
-                disconnectBtn.disabled = false;
-                ouPanel.style.display = 'block';
-                userPanel.style.display = 'block';
-                groupPanel.style.display = 'block';
-                
-                // 加载数据
-                loadUsers();
-                loadGroups();
-            } else {
-                connectBtn.disabled = false;
-                disconnectBtn.disabled = true;
-                ouPanel.style.display = 'none';
-                userPanel.style.display = 'none';
-                groupPanel.style.display = 'none';
-            }
-        } catch (error) {
-            showMessage('检查连接状态失败: ' + error.message, 'error');
-        }
-    }
-    
+	async function checkConnectionStatus() {
+		try {
+			const data = await apiRequest('/api/connection-status');
+			isConnected = data.connected; // 关键：以后端返回的connected为准
+			connectionStatus.textContent = data.connected ? `已连接到: ${data.domain}` : '未连接到域';
+			
+			// 更新UI状态时，严格依赖data.connected
+			if (isConnected) {
+				connectBtn.disabled = true;
+				disconnectBtn.disabled = false;
+				ouPanel.style.display = 'block';
+				userPanel.style.display = 'block';
+				groupPanel.style.display = 'block';
+				// 主动加载用户/组列表（确保连接成功后触发）
+				loadUsers();
+				loadGroups();
+			} else {
+				connectBtn.disabled = false;
+				disconnectBtn.disabled = true;
+				ouPanel.style.display = 'none';
+				userPanel.style.display = 'none';
+				groupPanel.style.display = 'none';
+			}
+		} catch (error) {
+			showMessage('检查连接状态失败: ' + error.message, 'error');
+			isConnected = false; // 异常时强制标记为未连接
+		}
+	}
+
+ 
     // 连接到域
     connectionForm.addEventListener('submit', async function(e) {
         e.preventDefault();

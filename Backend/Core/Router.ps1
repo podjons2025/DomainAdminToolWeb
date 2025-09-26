@@ -1,5 +1,5 @@
 <# 
-注意：请不要随意修改此文件，可能导致功能异常
+路由注册
 #>
 
 function Register-Routes {

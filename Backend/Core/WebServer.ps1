@@ -8,7 +8,7 @@ Add-Type -AssemblyName System.Web
 # 全局变量
 $script:httpListener = New-Object System.Net.HttpListener
 $script:frontendPath = $null
-$script:sessions = @{}  # 会话存储：键为SessionId（GUID），值为会话状态字典
+$script:sessions = @{}
 $script:routes = @{}
 
 # ==============================================
@@ -278,7 +278,7 @@ function Handle-Request {
         $isConnected = $false
         if (-not [string]::IsNullOrEmpty($sessionId) -and $script:sessions.ContainsKey($sessionId)) {
             $session = $script:sessions[$sessionId]
-            $isConnected = $session.connected  # 明确检查连接状态标记
+            $isConnected = $session.domainContext.IsConnected
         }
 
         # 状态检查与提示
