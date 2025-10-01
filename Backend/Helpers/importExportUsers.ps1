@@ -421,7 +421,7 @@ function ExportCSVUsers {
     $fileDialog.Title = "选择AD用户信息的导出路径"
     $fileDialog.DefaultExt = "csv"
     $fileDialog.AddExtension = $true
-    # 默认导出到桌面（提升用户体验）
+    # 默认导出到桌面
     $fileDialog.InitialDirectory = [Environment]::GetFolderPath("Desktop")
     
     if ($fileDialog.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) {
@@ -436,7 +436,7 @@ function ExportCSVUsers {
     try {
         # 3. 远程会话：仅读取AD数据（不涉及文件操作）
         $remoteUserData = Invoke-Command -Session $script:remoteSession -ScriptBlock {
-			param($NameOU)
+			param($NameOU, $allUsersOU)
             # 初始化远程结果对象
             $remoteResult = [PSCustomObject]@{
                 UserData = $null
@@ -464,8 +464,13 @@ function ExportCSVUsers {
                 "Department", "Title", "OfficePhone", "LastLogonDate"
             )
             try {
-                # 筛选条件：默认导出特定OU
-				$users = Get-ADUser -Filter * -SearchBase $NameOU -Properties $adProperties -ErrorAction Stop				
+				
+				if ($allUsersOU) {
+					$users = Get-ADUser -Filter * -Properties $adProperties -ErrorAction Stop
+				} else {
+					# 筛选条件：导出特定OU
+					$users = Get-ADUser -Filter * -SearchBase $NameOU -Properties $adProperties -ErrorAction Stop
+				}
                 $remoteResult.UserData = $users | Select-Object $adProperties  # 仅返回需要的属性
             }
             catch {
@@ -474,7 +479,7 @@ function ExportCSVUsers {
             }
 
             return $remoteResult
-        } -ArgumentList $script:currentOU -ErrorAction Stop
+        } -ArgumentList $script:currentOU, $script:allUsersOU -ErrorAction Stop
 
         # 4. 检查远程读取是否成功
         if ($remoteUserData.ErrorLogs.Count -gt 0) {
