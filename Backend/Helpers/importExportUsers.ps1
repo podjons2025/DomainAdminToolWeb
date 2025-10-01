@@ -290,7 +290,7 @@ function ImportCSVAndCreateUsers {
 						ChangePasswordAtLogon = $true
 						Description           = $user.Description
 						EmailAddress          = $user.EmailAddress
-						TelephoneNumber       = if (-not [string]::IsNullOrWhiteSpace($user.Telephone)) { $user.Telephone } else { $user.Phone }
+						OfficePhone           = if (-not [string]::IsNullOrWhiteSpace($user.Telephone)) { $user.Telephone } else { $user.Phone }
 						ErrorAction           = "Stop"
 					}
 
