@@ -142,10 +142,12 @@ async function loadUsers() {
         if (data.success) {
             renderUsersTable(data.users);
             renderPagination(data.total, data.page, data.pageSize);
-            document.getElementById('user-count').textContent = `用户数: ${data.count || 0}`;
+            document.getElementById('user-count').textContent = `用户数: ${data.total || 0}`;
         }
     } catch (error) {
         console.error('加载用户失败:', error);
+        // 异常时显示0，避免计数残留
+        document.getElementById('user-count').textContent = `用户数: 0`;		
     }
 }
 
@@ -244,19 +246,31 @@ document.addEventListener('DOMContentLoaded', function() {
 				ouPanel.style.display = 'block';
 				userPanel.style.display = 'block';
 				groupPanel.style.display = 'block';
-				// 主动加载用户/组列表（确保连接成功后触发）
+				// 用连接状态接口的计数兜底（防止加载列表失败）
+				if (data.userCount !== undefined) {
+					document.getElementById('user-count').textContent = `用户数: ${data.userCount}`;
+				}
+				if (data.groupCount !== undefined) {
+					document.getElementById('group-count').textContent = `组数: ${data.groupCount}`;
+				}
 				loadUsers();
 				loadGroups();
 			} else {
+				// 未连接时重置计数
 				connectBtn.disabled = false;
 				disconnectBtn.disabled = true;
 				ouPanel.style.display = 'none';
 				userPanel.style.display = 'none';
 				groupPanel.style.display = 'none';
+				document.getElementById('user-count').textContent = `用户数: 0`;
+				document.getElementById('group-count').textContent = `组数: 0`;
 			}
 		} catch (error) {
 			showMessage('检查连接状态失败: ' + error.message, 'error');
 			isConnected = false; // 异常时强制标记为未连接
+			// 异常时重置计数
+			document.getElementById('user-count').textContent = `用户数: 0`;
+			document.getElementById('group-count').textContent = `组数: 0`;			
 		}
 	}
 
@@ -278,6 +292,13 @@ document.addEventListener('DOMContentLoaded', function() {
             
             showMessage('连接成功', 'success');
             currentOuDisplay.textContent = data.currentOU;
+			// 直接从连接响应更新初始计数
+			if (data.userCount !== undefined) {
+				document.getElementById('user-count').textContent = `用户数: ${data.userCount}`;
+			}
+			if (data.groupCount !== undefined) {
+				document.getElementById('group-count').textContent = `组数: ${data.groupCount}`;
+			}			
             checkConnectionStatus();
         } catch (error) {
             console.error('连接失败:', error);
@@ -477,16 +498,21 @@ document.addEventListener('DOMContentLoaded', function() {
     };
     
     // 加载组列表
-    async function loadGroups() {
-        try {
-            const data = await apiRequest('/api/groups');
-            renderGroupsTable(data.groups);
-            groupCountElem.textContent = `组数: ${data.count || 0}`;
-        } catch (error) {
-            console.error('加载组失败:', error);
-        }
-    }
-    
+	async function loadGroups() {
+		try {
+			const data = await apiRequest('/api/groups?page=1&pageSize=20'); // 默认加载第一页
+			if (data.success) {
+				renderGroupsTable(data.groups);
+				// 关键新增：用接口返回的 total 字段更新组数
+				document.getElementById('group-count').textContent = `组数: ${data.total || 0}`;
+			}
+		} catch (error) {
+			console.error('加载组失败:', error);
+			// 异常时显示0
+			document.getElementById('group-count').textContent = `组数: 0`;
+		}
+	}
+		
     // 渲染组表格
     function renderGroupsTable(groups) {
         groupsBody.innerHTML = '';

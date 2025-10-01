@@ -2,10 +2,6 @@
 通用辅助函数
 #>
 
-<# 
-通用辅助函数
-#>
-
 # 修复拼音转换逻辑：调用正确的转换函数
 function Convert-ToPinyin {
     param([string]$ChineseText)

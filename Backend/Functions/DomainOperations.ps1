@@ -89,29 +89,27 @@ function script:Connect-ToDomain {
         # 验证默认OU路径（使用获取到的分区信息）
         $defaultOU = "CN=Users,$domainPartition"
         Write-Host "[调试] 最终验证的OU路径: $defaultOU"
-        
-        $ouExists = Invoke-Command -Session $remoteSession -ScriptBlock {
+	
+        $userCount = 0
+        $groupCount = 0
+
+        # 远程统计用户数量
+        $userCount = Invoke-Command -Session $remoteSession -ScriptBlock {
             param($ouPath)
             Import-Module ActiveDirectory -ErrorAction Stop
-            # 同时检查OU和容器
-            $ou = Get-ADOrganizationalUnit -Filter "DistinguishedName -eq '$ouPath'" -ErrorAction SilentlyContinue
-            $container = Get-ADObject -Filter "DistinguishedName -eq '$ouPath'" -ErrorAction SilentlyContinue
-            return $null -ne $ou -or $null -ne $container
-        } -ArgumentList $defaultOU -ErrorAction Stop
+            $users = Get-ADUser -Filter * -SearchBase $ouPath -ErrorAction SilentlyContinue
+            return $users.Count
+        } -ArgumentList $defaultOU -ErrorAction SilentlyContinue
 
-        if (-not $ouExists) {
-            throw "默认OU/容器路径无效或无权限访问：$defaultOU，请手动检查AD中是否存在该路径"
-        }
+        # 远程统计组数量
+        $groupCount = Invoke-Command -Session $remoteSession -ScriptBlock {
+            param($ouPath)
+            Import-Module ActiveDirectory -ErrorAction Stop
+            $groups = Get-ADGroup -Filter * -SearchBase $ouPath -ErrorAction SilentlyContinue
+            return $groups.Count
+        } -ArgumentList $defaultOU -ErrorAction SilentlyContinue
 
-        # 存储会话信息（若方法1未获取到domainInfo，用分区信息补充）
-        if (-not $domainInfo) {
-            $domainInfo = [PSCustomObject]@{
-                DefaultPartition = $domainPartition
-                DNSRoot = $requestData.domain
-                Name = $requestData.domain.Split('.')[0]
-            }
-        }
-
+        # 存储会话信息（新增 userCountStatus/groupCountStatus 初始化）
         $script:sessions[$sessionId] = @{
             domainContext = @{
                 Domain     = $requestData.domain
@@ -122,8 +120,8 @@ function script:Connect-ToDomain {
             remoteSession = $remoteSession
             currentOU     = $defaultOU
             allUsersOU    = $null
-            userCountStatus = 0
-            groupCountStatus = 0
+            userCountStatus = $userCount  # 初始化用户计数
+            groupCountStatus = $groupCount # 初始化组计数
         }
 
         # 设置会话Cookie
@@ -138,6 +136,9 @@ function script:Connect-ToDomain {
             connected = $true
             message = "成功连接到域: $($requestData.domain)"
             domainInfo = $domainInfo | Select-Object Name, DNSRoot, Forest
+            currentOU = $defaultOU
+            userCount = $userCount  # 前端可直接获取初始计数
+            groupCount = $groupCount # 前端可直接获取初始计数
         }
     }
     catch {
